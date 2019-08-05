@@ -36,17 +36,22 @@ var (
 	verifier *oidc.IDTokenVerifier
 )
 
-// IdTokenConfig ...
+// IdTokeConfig parameters to initialize IdTokenSource
+//    Audience and Credential fields are both required.
 type IdTokenConfig struct {
 	Credentials *google.Credentials
 	Audiences   []string
 }
 
-// IdTokenSource ..
+// IdTokenSource returns a TokenSource which returns a GoogleOIDC token
+//
+//  tokenConfig (IdTokenConfig): The root Credential object which will
+//      be used to generate the IDToken.
+// https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b
 func IdTokenSource(tokenConfig IdTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.Credentials == nil || tokenConfig.Audiences == nil {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: IdTokenConfig.Credentials and cannot be nil")
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: IdTokenConfig.Credentials and Audience and cannot be nil")
 	}
 
 	return &idTokenSource{
@@ -57,15 +62,18 @@ func IdTokenSource(tokenConfig IdTokenConfig) (oauth2.TokenSource, error) {
 }
 
 type idTokenSource struct {
-	refreshMutex *sync.Mutex   // guards impersonatedToken; held while fetching or updating it.
-	idToken      *oauth2.Token // Token representing the impersonated identity.
+	refreshMutex *sync.Mutex   // guards idToken; held while fetching or updating it.
+	idToken      *oauth2.Token // Token representing source identity.
 	credentials  google.Credentials
 	audiences    []string
 }
 
-// VerifyGoogleIDToken ...
+// VerifyGoogleIDToken verifies the IdToken for expiration, signature against Google's certificates
+//    and the audience it should be issued to
+//    returns false if unverified
+//    TODO: return struct to allow inspection of the actual claims, not just true/false of the
+//          signature+expiration+audience
 func VerifyGoogleIDToken(ctx context.Context, token string, aud string) (*oidc.IDToken, error) {
-
 	if verifier == nil {
 		keySet := oidc.NewRemoteKeySet(ctx, googleRootCertURL)
 
@@ -74,7 +82,6 @@ func VerifyGoogleIDToken(ctx context.Context, token string, aud string) (*oidc.I
 		}
 		verifier = oidc.NewVerifier("https://accounts.google.com", keySet, config)
 	}
-
 	idt, err := verifier.Verify(ctx, token)
 	if err != nil {
 		return nil, err
@@ -83,27 +90,26 @@ func VerifyGoogleIDToken(ctx context.Context, token string, aud string) (*oidc.I
 }
 
 func (ts *idTokenSource) Token() (*oauth2.Token, error) {
-
 	ts.refreshMutex.Lock()
 	defer ts.refreshMutex.Unlock()
 
 	if ts.idToken.Valid() {
 		return ts.idToken, nil
 	}
-
 	if len(ts.audiences) == 0 {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience cannot be empty")
+		return nil, fmt.Errorf("salrashid123/oauth2/google: Audience cannot be empty")
 	}
 
 	var idToken string
 
+	// first check if the provided token is impersonated
 	switch ts.credentials.TokenSource.(type) {
 	case *impersonatedTokenSource:
 		its := ts.credentials.TokenSource.(*impersonatedTokenSource)
 		client := oauth2.NewClient(context.TODO(), its.rootSource)
 		service, err := iamcredentials.New(client)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Error creating IAMCredentials: %v", err)
+			return nil, fmt.Errorf("salrashid123/oauth2/google: Error creating IAMCredentials: %v", err)
 		}
 		name := fmt.Sprintf("projects/-/serviceAccounts/%s", its.targetPrincipal)
 		tokenRequest := &iamcredentials.GenerateIdTokenRequest{
@@ -112,22 +118,25 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 		}
 		at, err := service.Projects.ServiceAccounts.GenerateIdToken(name, tokenRequest).Do()
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google:: Error calling iamcredentials.GenerateIdToken: %v", err)
+			return nil, fmt.Errorf("salrashid123/oauth2/google:: Error calling iamcredentials.GenerateIdToken: %v", err)
 		}
 		idToken = at.Token
 
 	default:
+		// if not, the its either UserCredentials, ComputeCredentials or ServiceAccount, either way, it should have
+		// and existing Token()
 		tok, err := ts.credentials.TokenSource.Token()
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google:: Unable to derive token from Credentials: %v", err)
+			return nil, fmt.Errorf("salrashid123/oauth2/google:: Unable to derive token from Credentials: %v", err)
 		}
+		// Attempt to parse the JSON file as a service account creds; otherwise, its a usercredential file from gcloud CLI
 		if ts.credentials.JSON != nil {
-			fmt.Printf("Usign ServiceAccountJSON credential type")
 			conf, err := google.JWTConfigFromJSON(ts.credentials.JSON, "")
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("salrashid123/oauth2/google:: JSON Credential cannot be parsed.  Initialize ServiceAccount Credentials instead: %v", err)
 			}
 
+			// now construct the JWT to exchange
 			header := &jws.Header{
 				Algorithm: "RS256",
 				Typ:       "JWT",
@@ -146,6 +155,7 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 				PrivateClaims: privateClaims,
 			}
 
+			// sign it with the private key inside the JSON file
 			key := conf.PrivateKey
 			block, _ := pem.Decode(key)
 			if block != nil {
@@ -172,6 +182,7 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 			d.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
 			d.Add("assertion", token)
 
+			// do the exchange
 			client := &http.Client{}
 			req, err := http.NewRequest("POST", "https://www.googleapis.com/oauth2/v4/token", strings.NewReader(d.Encode()))
 			if err != nil {
@@ -190,6 +201,7 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 				return nil, err
 			}
 
+			// extract the id_token from the response
 			var y map[string]interface{}
 			err = json.Unmarshal([]byte(body), &y)
 			if err != nil {
@@ -197,7 +209,9 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 			}
 
 			idToken = y["id_token"].(string)
+
 		} else if tok.RefreshToken == "" {
+			// if the token isn't a json cert or usercreds file, it should be a ReuseTokenSource from MetadataServer
 			client := &http.Client{}
 			req, err := http.NewRequest("GET", metadataIdentityDocURL+"?audience="+ts.audiences[0], nil)
 			req.Header.Add("Metadata-Flavor", "Google")
@@ -213,18 +227,21 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 			}
 			idToken = string(bodyBytes)
 		} else {
+			// bail, this shoudn't happe
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unsupported Credential Type supplied: got %v", reflect.TypeOf(ts.credentials.TokenSource))
 		}
 	}
 
+	// I'm only verifying the token here so that i can extract out the expiration date.
+	// TODO: just extract and parse, don't be lazy, sal
 	idt, err := VerifyGoogleIDToken(context.Background(), idToken, ts.audiences[0])
 	if err != nil {
-		log.Fatalf("salrashid123/x/oauth2/google: Unable to verify OIDC token %v", err)
+		log.Fatalf("salrashid123/oauth2/google: Unable to verify OIDC token %v", err)
 	}
 
 	expireAt := idt.Expiry
 	if err != nil {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Error parsing ExpireTime from iamcredentials: %v", err)
+		return nil, fmt.Errorf("salrashid123/oauth2/google: Error parsing ExpireTime from iamcredentials: %v", err)
 	}
 
 	ts.idToken = &oauth2.Token{
