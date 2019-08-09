@@ -25,6 +25,7 @@ import (
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jws"
 	"google.golang.org/api/iamcredentials/v1"
+	"google.golang.org/grpc/credentials"
 )
 
 const (
@@ -251,3 +252,32 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 
 	return ts.idToken, nil
 }
+
+// TokenSource here is used to initlaize gRPC Credentials
+// START Section for PerRPCCredentials
+type TokenSource struct {
+	oauth2.TokenSource
+}
+
+// NewIDTokenRPCCredential returns a crdential object for use with gRPC clients
+func NewIDTokenRPCCredential(ctx context.Context, tokenSource oauth2.TokenSource) (credentials.PerRPCCredentials, error) {
+	return TokenSource{tokenSource}, nil
+}
+
+// GetRequestMetadata gets the request metadata as a map from a TokenSource.
+func (ts TokenSource) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	token, err := ts.Token()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"authorization": token.Type() + " " + token.AccessToken,
+	}, nil
+}
+
+// RequireTransportSecurity indicates whether the credentials requires transport security.
+func (ts TokenSource) RequireTransportSecurity() bool {
+	return true
+}
+
+// END Section for PerRPCCredentials

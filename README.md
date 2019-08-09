@@ -182,14 +182,22 @@ import (
             Credentials: creds,
             Audiences:   []string{targetAudience},
         },
-    )
-    tok, err := idTokenSource.Token()
-    if err != nil {
-        log.Fatal(err)
-    }
-
-	rpcCreds := oauth.NewOauthAccess(tok)
+	)
 	
+	// if you are using a token directly:	
+	/*
+	tok, err := idTokenSource.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	rpcCreds := oauth.NewOauthAccess(tok)
+	*/
+
+	rpcCreds, err := sal.NewIDTokenRPCCredential(ctx, idTokenSource)
+	if err != nil {
+		log.Fatal(err)
+	}
+
     ce, err := credentials.NewClientTLSFromFile("server_crt.pem", "")
     if err != nil {
         log.Fatal(err)
