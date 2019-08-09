@@ -46,6 +46,8 @@ func main() {
 }
 ```
 
+You can pick the credential type that suits you:
+
 ### Default Credentials with ServiceAccount
 
 First export env vars pointing to svc_account
@@ -161,7 +163,14 @@ fmt.Printf("Token Verified with Audience: %v\n", idt.Audience)
 
 ## gRPC WithPerRPCCredentials
 
-To use IDTokens with gRPC channels, apply the `Token()` to [oauth.NewOauthAccess()](https://godoc.org/google.golang.org/grpc/credentials/oauth#NewOauthAccess)
+To use IDTokens with gRPC channels, you can either
+A) Acquire credentials and use `NewIDTokenRPCCredential()` (preferable)
+   ```golang
+   rpcCreds, err := sal.NewIDTokenRPCCredential(ctx, idTokenSource)
+   ```
+OR
+
+B) apply the `Token()` to [oauth.NewOauthAccess()](https://godoc.org/google.golang.org/grpc/credentials/oauth#NewOauthAccess)
 and that directly into [grpc.WithPerRPCCredentials()](https://godoc.org/google.golang.org/grpc#WithPerRPCCredentials)
 
 ```golang
