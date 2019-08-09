@@ -159,6 +159,50 @@ if err != nil {
 fmt.Printf("Token Verified with Audience: %v\n", idt.Audience)
 ```
 
+## gRPC WithPerRPCCredentials
+
+To use IDTokens with gRPC channels, apply the `Token()` to [oauth.NewOauthAccess()](https://godoc.org/google.golang.org/grpc/credentials/oauth#NewOauthAccess)
+and that directly into [grpc.WithPerRPCCredentials()](https://godoc.org/google.golang.org/grpc#WithPerRPCCredentials)
+
+```golang
+import (
+	"google.golang.org/grpc/credentials/oauth"
+	sal "github.com/salrashid123/oauth2/google"
+	...
+)
+   ...
+
+    scopes := "https://www.googleapis.com/auth/userinfo.email"
+    creds, err := google.FindDefaultCredentials(ctx, scopes)
+    if err != nil {
+        log.Fatal(err)
+    }
+    idTokenSource, err := sal.IdTokenSource(
+        sal.IdTokenConfig{
+            Credentials: creds,
+            Audiences:   []string{targetAudience},
+        },
+    )
+    tok, err := idTokenSource.Token()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+	rpcCreds := oauth.NewOauthAccess(tok)
+	
+    ce, err := credentials.NewClientTLSFromFile("server_crt.pem", "")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    conn, err := grpc.Dial(address, grpc.WithTransportCredentials(ce), grpc.WithPerRPCCredentials(rpcCreds))
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer conn.Close()
+
+    c := pb.NewEchoServerClient(conn)
+```
 ---
 
 
