@@ -48,7 +48,7 @@ func main() {
 
 You can pick the credential type that suits you:
 
-### Default Credentials with ServiceAccount
+#### Default Credentials with ServiceAccount
 
 First export env vars pointing to svc_account
 
@@ -64,7 +64,7 @@ if err != nil {
 }
 ```
 
-### ComputeEngine/GKE
+#### ComputeEngine/GKE
 
 ```golang
 scopes := "https://www.googleapis.com/auth/userinfo.email"
@@ -74,7 +74,7 @@ if err != nil {
 }
 ```
 
-### ServiceAccount
+#### ServiceAccount
 
 Read the certificate file and initialize a credential:
 
@@ -90,7 +90,7 @@ if err != nil {
 }
 ```
 
-### ImpersonatedCredentials
+#### ImpersonatedCredentials
 
 ImpersonatedCredential is experimental (you'll only find it in this repo for now)
 
@@ -164,6 +164,7 @@ fmt.Printf("Token Verified with Audience: %v\n", idt.Audience)
 ## gRPC WithPerRPCCredentials
 
 To use IDTokens with gRPC channels, you can either
+
 A) Acquire credentials and use `NewIDTokenRPCCredential()` (preferable)
    ```golang
    rpcCreds, err := sal.NewIDTokenRPCCredential(ctx, idTokenSource)

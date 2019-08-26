@@ -101,6 +101,11 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("salrashid123/oauth2/google: Audience cannot be empty")
 	}
 
+	_, err := url.ParseRequestURI(ts.audiences[0])
+	if err != nil {
+		return nil, fmt.Errorf("salrashid123/oauth2/google: Audience must be valid URL")
+	}
+
 	var idToken string
 
 	// first check if the provided token is impersonated
@@ -123,6 +128,8 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 		}
 		idToken = at.Token
 
+	// TODO: once merged to googe/oauth2, use *oauth2.reuseTokenSource (can't use it now since its not exported outside)
+	//  https://github.com/golang/oauth2/blob/master/oauth2.go#L288
 	default:
 		// if not, the its either UserCredentials, ComputeCredentials or ServiceAccount, either way, it should have
 		// and existing Token()
