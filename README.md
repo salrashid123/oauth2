@@ -238,97 +238,97 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 
 1. Create a VM with a `TPM`.  
 
-For example, create an Google Cloud [Shielded VM](https://cloud.google.com/security/shielded-cloud/shielded-vm).
+	For example, create an Google Cloud [Shielded VM](https://cloud.google.com/security/shielded-cloud/shielded-vm).
 
 
 2. Install `tpm2_tools`.
 
-This step is only necessary to seal the keys to the TPM.  You can also use [go-tpm](https://github.com/google/go-tpm).
+	This step is only necessary to seal the keys to the TPM.  You can also use [go-tpm](https://github.com/google/go-tpm).
 
-The installation steps to setup `tpm2_tools` on an Ubuntu ShieldedVM can be found [here](https://gist.github.com/salrashid123/9390fdccbe19eb8aba0f76afadf64e68).
+	The installation steps to setup `tpm2_tools` on an Ubuntu ShieldedVM can be found [here](https://gist.github.com/salrashid123/9390fdccbe19eb8aba0f76afadf64e68).
 
 3. Extract the public/private RSA keys.
 
-Create a Service Account and extract the public private keypairs.  Note the `keyID` and `email` address for this key (its needed later)
+	Create a Service Account and extract the public private keypairs.  Note the `keyID` and `email` address for this key (its needed later)
 
-For a `.p12` file, use `openssl`:
+	For a `.p12` file, use `openssl`:
 
-```bash
-openssl pkcs12 -in svc_account.p12  -nocerts -nodes -passin pass:notasecret | openssl rsa -out privkey.pem
-openssl rsa -in privkey.pem -outform PEM -pubout -out public.pem
-```
+	```bash
+	openssl pkcs12 -in svc_account.p12  -nocerts -nodes -passin pass:notasecret | openssl rsa -out privkey.pem
+	openssl rsa -in privkey.pem -outform PEM -pubout -out public.pem
+	```
 
 4. Embed PrivateKey and acquire Persistent Handle
 
-Transfer the PEM keypairs to the ShieldedVM (you can use any means you like)
+	Transfer the PEM keypairs to the ShieldedVM (you can use any means you like)
 
-Create a primary object, parent and load the `private.pem` file into the TPM.
-```
-# tpm2_createprimary -C e -g sha256 -G rsa -c primary.ctx
+	Create a primary object, parent and load the `private.pem` file into the TPM.
+	```
+	# tpm2_createprimary -C e -g sha256 -G rsa -c primary.ctx
 
-# tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.priv
+	# tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.priv
 
-# tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
-```
+	# tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
+	```
 
-At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`:
+	At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`:
 
-```
-# tpm2_evictcontrol -C o -c key.ctx 0x81010002
-persistent-handle: 0x81010002
-action: persisted
-```
+	```
+	# tpm2_evictcontrol -C o -c key.ctx 0x81010002
+	persistent-handle: 0x81010002
+	action: persisted
+	```
 
-> Note, there are several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
+	> Note, there are several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
 
 5. Use `TpmTokenSource`
 
-After the key is embedded, you can *DELETE* any reference to `private.pem` (the now exists protected by the TPM and any access policy you may want to setup).
+	After the key is embedded, you can *DELETE* any reference to `private.pem` (the now exists protected by the TPM and any access policy you may want to setup).
 
-The TPM based `TokenSource` can now be used to access a GCP resource.
+	The TPM based `TokenSource` can now be used to access a GCP resource.
 
-```golang
-package main
+	```golang
+	package main
 
-import (
-	"log"
-	"net/http"
-	"golang.org/x/oauth2"
-	sal "github.com/salrashid123/oauth2/google"
-)
-
-func main() {
-
-	tpmTokenSource, err := sal.TpmTokenSource(
-		sal.TpmTokenConfig{
-			Tpm:       "/dev/tpm0",
-			Email:     "svcA@your_project.iam.gserviceaccount.com",
-			TpmHandle: 0x81010002,
-			Audience:  "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
-			KeyId:     "your_service_account_key_id",
-		},
+	import (
+		"log"
+		"net/http"
+		"golang.org/x/oauth2"
+		sal "github.com/salrashid123/oauth2/google"
 	)
 
-	tok, err := tpmTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Token: %v", tok.AccessToken)
-	client := &http.Client{
-		Transport: &oauth2.Transport{
-			Source: tpmTokenSource,
-		},
-	}
+	func main() {
 
-	url := "https://pubsub.googleapis.com/v1/projects/your_project/topics"
-	resp, err := client.Get(url)
-	if err != nil {
-		glog.Fatal(err)
+		tpmTokenSource, err := sal.TpmTokenSource(
+			sal.TpmTokenConfig{
+				Tpm:       "/dev/tpm0",
+				Email:     "svcA@your_project.iam.gserviceaccount.com",
+				TpmHandle: 0x81010002,
+				Audience:  "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
+				KeyId:     "your_service_account_key_id",
+			},
+		)
+
+		tok, err := tpmTokenSource.Token()
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Token: %v", tok.AccessToken)
+		client := &http.Client{
+			Transport: &oauth2.Transport{
+				Source: tpmTokenSource,
+			},
+		}
+
+		url := "https://pubsub.googleapis.com/v1/projects/your_project/topics"
+		resp, err := client.Get(url)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		log.Printf("Response: %v", resp.Status)
 	}
-	log.Printf("Response: %v", resp.Status)
-}
-```
+	```
 
 * TODO, to fix:
 * `/dev/tpm0` concurrency from multiple clients.
