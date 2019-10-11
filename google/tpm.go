@@ -122,7 +122,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("google: Unable to Sign wit TPM: %v", err)
 	}
 
-	msg := j + "." + base64.RawStdEncoding.EncodeToString([]byte(sig.RSA.Signature))
+	msg := j + "." + base64.URLEncoding.EncodeToString([]byte(sig.RSA.Signature))
 
 	return &oauth2.Token{AccessToken: msg, TokenType: "Bearer", Expiry: exp}, nil
 }
