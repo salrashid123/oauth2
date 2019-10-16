@@ -351,10 +351,6 @@ This library uses [go-ykpiv](https://github.com/paultag/go-ykpiv) which inturn u
 
 This repo is under Apache License but specifically this component is MIT License per [go-ykpiv](https://github.com/paultag/go-ykpiv/blob/master/LICENSE).
 
-
-[Encrypting Google Application Default and gcloud credentials with GPG SmardCard](https://medium.com/google-cloud/encrypting-google-application-default-and-gcloud-credentials-with-gpg-smardcard-fb6fec5c6e48)
-
-
 ### Usage
 
 1. Prepare Yubikey for Key import
