@@ -482,7 +482,7 @@ This repo is under Apache License but specifically this component is MIT License
 		log.Printf("Response: %v", resp.Status)
 	```
 
-	Note:  by default the Yubikey allows for 3 PIN attempts before going into lockout.  To unlock, see 
+	Note:  by default the Yubikey allows for 3 PIN attempts before going into lockout.  To unlock, see  [PIN and Management Key](https://developers.yubico.com/yubikey-piv-manager/PIN_and_Management_Key.html)
 
 
 
@@ -496,7 +496,7 @@ This repo is under Apache License but specifically this component is MIT License
 Some notes:
 
   - Slot 9c: Digital Signature is reserved for Digital Signatures)
-  - The default PIN for access is `123456`.  The default unlock code is `12345678`.  See [PIN and Management Key](https://developers.yubico.com/yubikey-piv-manager/PIN_and_Management_Key.html)
+  - The default PIN for access is `123456`.  The default unlock code is `12345678`. 
 
 See previous article about using the Yubikey NEO with GPG decryption [Encrypting Google Application Default and gcloud credentials with GPG SmardCard](https://medium.com/google-cloud/encrypting-google-application-default-and-gcloud-credentials-with-gpg-smardcard-fb6fec5c6e48).
 The distinction here is that the RSA signing happens all onboard.
