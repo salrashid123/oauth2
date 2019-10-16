@@ -345,7 +345,7 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 
 `google/oauth2/YubiKeyTokenSource` is a variation of `google/oauth2/JWTAccessTokenSourceFromJSON` where the private key used to sign the JWT is embedded within a [PIV-enabled YubiKey](https://developers.yubico.com/PIV/Introduction/YubiKey_and_PIV.html).
 
-The private key in raw form _not_ exportable or exposed to the filesystem or any process other than through the Yubikey interface.  This token source uses the TPM interface to `sign` the JWT which is then used to access a Google Cloud API.  
+The private key in raw form _not_ exportable or exposed to the filesystem or any process other than through the Yubikey interface.  This token source uses the yubikey alone to `sign` the JWT which is then used to access a Google Cloud API.  
 
 This library uses [go-ykpiv](https://github.com/paultag/go-ykpiv) which inturn uses C extensions to access the Yubikek provided by `libkpiv-dev`.  You must have `libkpiv-dev` the target system where this TokenSource will be used.
 
