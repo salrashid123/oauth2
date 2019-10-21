@@ -1,9 +1,11 @@
 
-# Google OIDC tokens in golang
+# Google OIDC tokens, TPM and YubiKey -based Credential TokenSource in golang
 
 Sample Reference that implements Google OIDC tokens in golang to support Google Cloud services.
 
-Use this library to easily acquire Google OpenID Connect tokens for use against Cloud Run, Cloud Functions, IAP, endpoints and other services.
+Also shows how acquire Service Account Credentials embedded within a Trusted Platform Module (TPM) and Yubikey.  The Service Account key never leaves the TPM or Yubikey.
+
+For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against Cloud Run, Cloud Functions, IAP, endpoints and other services.
 
 You can bootstrap this client using a source [oauth2/google/Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object
 
