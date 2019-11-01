@@ -1,7 +1,7 @@
 
-# Google OIDC tokens, TPM-based Credential TokenSource in golang
+# Google OpenID Connect (OIDC), Impersonated and TPM-based Credential TokenSource in golang
 
-Sample Reference that implements Google OIDC tokens in golang to support Google Cloud services.
+Sample Reference that implements Google OIDC tokens, Impersonated credentials in golang to support Google Cloud services.
 
 Also shows how acquire Service Account Credentials embedded within a Trusted Platform Module (TPM).  The Service Account key never leaves the TPM.
 
@@ -16,7 +16,7 @@ For more information, see
 > NOTE: This is NOT supported by Google
 
 
-## Usage
+## Usage IDToken
 
 You can bootstrap this library in a number of ways depending on where you are running this code.  You must acquire a [Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object and pass that into `IdTokenCredentials`
 
@@ -91,42 +91,7 @@ if err != nil {
 	log.Fatal(err)
 }
 ```
-
-#### ImpersonatedCredentials
-
-ImpersonatedCredential is experimental (you'll only find it in this repo for now)
-
-```golang
-targetPrincipal := "impersonated-account@fabled-ray-104117.iam.gserviceaccount.com"
-lifetime := 30 * time.Second
-delegates := []string{}
-targetScopes := []string{"https://www.googleapis.com/auth/devstorage.read_only",
-	"https://www.googleapis.com/auth/cloud-platform"}
-rootTokenSource, err := google.DefaultTokenSource(ctx,
-	"https://www.googleapis.com/auth/iam")
-if err != nil {
-	log.Fatal(err)
-}
-tokenSource, err := sal.ImpersonatedTokenSource(
-	sal.ImpersonatedTokenConfig{
-		RootTokenSource: rootTokenSource,
-		TargetPrincipal: targetPrincipal,
-		Lifetime:        lifetime,
-		Delegates:       delegates,
-		TargetScopes:    targetScopes,
-	},
-)
-if err != nil {
-	log.Fatal(err)
-}
-
-// Since we just have a tokensource here, we need to add that into a Credential for later use
-creds := &google.Credentials{
-	TokenSource: tokenSource,
-}
-```
-
-## Use IDToken in HTTP Client
+### Use IDToken in HTTP Client
 
 Now that you have a Credential, you can extract the token or just use it in an authorized client
 
@@ -150,7 +115,7 @@ if err != nil {
 log.Printf("Response: %v", resp.Status)
 ```
 
-## Token Verification
+### Token Verification
 
 You can verify a rawToken against google public certifiates and audience
 
@@ -163,7 +128,7 @@ if err != nil {
 fmt.Printf("Token Verified with Audience: %v\n", idt.Audience)
 ```
 
-## gRPC WithPerRPCCredentials
+### gRPC WithPerRPCCredentials
 
 To use IDTokens with gRPC channels, you can either
 
@@ -223,9 +188,54 @@ import (
 
     c := pb.NewEchoServerClient(conn)
 ```
+
+## Usage ImpersonatedCredentials
+
+ImpersonatedCredential is experimental (you'll only find it in this repo for now).  `Impersonated Credentials` allows one service account or user to impersonate another service account.  This API already exits in `google-auth-python` and `google-auth-java`
+
+
+- Please see 
+  - [issue#378](https://github.com/googleapis/google-api-go-client/issues/378)
+  - [google-auth-python](https://google-auth.readthedocs.io/en/latest/reference/google.auth.impersonated_credentials.html)
+  - [google-auth-java](https://github.com/googleapis/google-auth-library-java/blob/master/oauth2_http/java/com/google/auth/oauth2/ImpersonatedCredentials.java)
+  - [Terraform “Assume Role” and service Account impersonation on Google Cloud](https://medium.com/google-cloud/terraform-assume-role-and-service-account-impersonation-on-google-cloud-ffc553863e72)
+
+To use this credential type, you must allow the source credential the `iam/ServiceAccountTokenCreator` role on the target service account.  From there, you bootstrap the source, then the target and finally use the target in a google cloud api.
+
+```golang
+targetPrincipal := "impersonated-account@fabled-ray-104117.iam.gserviceaccount.com"
+lifetime := 30 * time.Second
+delegates := []string{}
+targetScopes := []string{"https://www.googleapis.com/auth/devstorage.read_only",
+	"https://www.googleapis.com/auth/cloud-platform"}
+rootTokenSource, err := google.DefaultTokenSource(ctx,
+	"https://www.googleapis.com/auth/iam")
+if err != nil {
+	log.Fatal(err)
+}
+tokenSource, err := sal.ImpersonatedTokenSource(
+	sal.ImpersonatedTokenConfig{
+		RootTokenSource: rootTokenSource,
+		TargetPrincipal: targetPrincipal,
+		Lifetime:        lifetime,
+		Delegates:       delegates,
+		TargetScopes:    targetScopes,
+	},
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+// Since we just have a tokensource here, we need to add that into a Credential for later use
+creds := &google.Credentials{
+	TokenSource: tokenSource,
+}
+```
+
+
 ---
 
-## TpmTokenSource
+## Usage TpmTokenSource
 
 >> **WARNING:**  `TpmTokenSource` is highly experimental.  This repo is NOT supported by Google
 
@@ -290,7 +300,7 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 
 	After the key is embedded, you can *DELETE* any reference to `private.pem` (the now exists protected by the TPM and any access policy you may want to setup).
 
-	The TPM based `TokenSource` can now be used to access a GCP resource.
+	The TPM based `TokenSource` can now be used to access a GCP resource using either a plain HTTPClient or _native_ GCP library (`google-cloud-pubsub`)!!
 
 	```golang
 	package main
@@ -298,8 +308,12 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 	import (
 		"log"
 		"net/http"
+		"cloud.google.com/go/pubsub"		
 		"golang.org/x/oauth2"
 		sal "github.com/salrashid123/oauth2/google"
+
+		"google.golang.org/api/iterator"
+		"google.golang.org/api/option"	
 	)
 
 	func main() {
@@ -331,6 +345,27 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 			glog.Fatal(err)
 		}
 		log.Printf("Response: %v", resp.Status)
+
+
+		// Using google-cloud library
+
+		ctx := context.Background()
+		pubsubClient, err := pubsub.NewClient(ctx, proj, option.WithTokenSource(tpmTokenSource))
+		if err != nil {
+			log.Fatalf("Could not create pubsub Client: %v", err)
+		}
+
+		it := pubsubClient.Topics(ctx)
+		for {
+			topic, err := it.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				log.Fatalf("Unable to iterate topics %v", err)
+			}
+			log.Printf("Topic: %s", topic.ID())
+		}		
 	}
 	```
 
