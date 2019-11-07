@@ -253,13 +253,7 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 	For example, create an Google Cloud [Shielded VM](https://cloud.google.com/security/shielded-cloud/shielded-vm).
 
 
-2. Install `tpm2_tools`.
-
-	This step is only necessary to seal the keys to the TPM.  You can also use [go-tpm](https://github.com/google/go-tpm).
-
-	The installation steps to setup `tpm2_tools` on an Ubuntu ShieldedVM can be found [here](https://gist.github.com/salrashid123/9390fdccbe19eb8aba0f76afadf64e68).
-
-3. Extract the public/private RSA keys.
+2. Extract the public/private RSA keys.
 
 	Create a Service Account and extract the public private keypairs.  Note the `keyID` and `email` address for this key (its needed later)
 
@@ -270,7 +264,17 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 	openssl rsa -in privkey.pem -outform PEM -pubout -out public.pem
 	```
 
-4. Embed PrivateKey and acquire Persistent Handle
+3. Embed certificate as Persistent Handle
+
+	This step is only necessary to seal the keys to the TPM.  You can either install `tpm2_tools` or the utility function in `go-tpm` cited below.
+	
+
+
+	Do either 4a or 4b:	
+
+4a. Embed PrivateKey and acquire Persistent Handle using tpm2_tools
+
+    The installation steps to setup `tpm2_tools` on an Ubuntu ShieldedVM can be found [here](https://gist.github.com/salrashid123/9390fdccbe19eb8aba0f76afadf64e68).
 
 	Transfer the PEM keypairs to the ShieldedVM (you can use any means you like)
 
@@ -295,6 +299,11 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 
 	> Note, there are several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
+
+4b. Embed PrivateKey and acquire Persistent Handle using go-tpm
+
+	Run the following utility function which does the same steps as `tpm2_tools` sequence above but instead using [go-tpm](https://github.com/google/go-tpm).
+	- [https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go)
 
 5. Use `TpmTokenSource`
 
