@@ -196,6 +196,7 @@ ImpersonatedCredential is experimental (you'll only find it in this repo for now
 
 - Please see 
   - [issue#378](https://github.com/googleapis/google-api-go-client/issues/378)
+  - [gcloud --impersonate-service-account](https://cloud.google.com/sdk/gcloud/reference/#--impersonate-service-account)
   - [google-auth-python](https://google-auth.readthedocs.io/en/latest/reference/google.auth.impersonated_credentials.html)
   - [google-auth-java](https://github.com/googleapis/google-auth-library-java/blob/master/oauth2_http/java/com/google/auth/oauth2/ImpersonatedCredentials.java)
   - [Terraform “Assume Role” and service Account impersonation on Google Cloud](https://medium.com/google-cloud/terraform-assume-role-and-service-account-impersonation-on-google-cloud-ffc553863e72)
