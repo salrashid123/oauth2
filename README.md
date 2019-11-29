@@ -1,17 +1,40 @@
 
-# Google OpenID Connect (OIDC), Impersonated and TPM-based Credential TokenSource in golang
+# Google OpenID Connect (OIDC), Impersonated, KMS and TPM-based Credential TokenSource in golang
 
-Sample Reference that implements Google OIDC tokens, Impersonated credentials in golang to support Google Cloud services.
+Sample Reference that implements various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
-Also shows how acquire Service Account Credentials embedded within a Trusted Platform Module (TPM).  The Service Account key never leaves the TPM.
+* a Google OpenID Connect token
+* an `access_token` that is impersonating another ServiceAccount.
+* an `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
+* an `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 
-For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against Cloud Run, Cloud Functions, IAP, endpoints and other services.
+For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
 
-You can bootstrap this client using a source [oauth2/google/Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object
+For Impersonated Credentials, you will use a source [oauth2/google/Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object which as IAM permissions to assume another ServiceAccount and then finally perform operations as that account.
+
+For TPM based Credentials, you will need to embed the ServiceAccount within a Trusted Platform Module.
+
+For KMS based Credentials, you can either embed the ServiceAccounts Private key within KMS or generate a Signing Key on KMS and then associate a service account with it.
 
 For more information, see
-- [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
-- [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
+
+* OIDC:
+ - [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
+
+* Impersonated:
+ - [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
+ - [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
+
+* TPM:
+ - [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
+ - [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
+ - [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
+
+* KMS:
+ - [mTLS with Google Cloud KMS](https://github.com/salrashid123/kms_golang_signer)
+
+
+And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid123/yubikey)
 
 > NOTE: This is NOT supported by Google
 
@@ -431,3 +454,67 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 
 ---
 
+## Usage KmsTokenSource
+
+>> **WARNING:**  `KmsTokenSource` is  experimental.  This repo is NOT supported by Google
+
+Frankly, I'm not sure the feasibility or usecases for this tokenSource but what this allows you to do is use KMS as the keystorage system for a serviceAccount.  The obvious question is that to gain access to the KMS key you must already be authenticated...
+
+Suppose your credential does not directly grant you access to a resource but rather you must impersonate service account to do so (possibly with also some  [IAM Conditional](https://cloud.google.com/iam/docs/conditions-overview) as well).  You can that bit of impersonation via the impersonation credentials described in this repo but the other way is to acquire access to a service account key somehow.  One way to do that last part is to gain access through KMS API call.
+
+Anyway, there are two ways to embed a ServiceAccount's keys into KMS:
+
+1. Download a serviceAccount Key and the import private key into KMS
+2. Generate a a keypair on KMS, download the public certificate and associate the public key with a ServiceAccount.
+
+There are advantages and disadvantages to each ...both of which hinge on on the controls you have in your system/processes.   For (1), you need to make sure the private key ise securely transported.   For (2), make sure the public key is securely transported...
+
+
+either do (A) or (B) below:
+
+### A. Generate Service Account key on KMS directly
+
+On Google cloud console, go to the KMS screen for a given project, create a new key with the specifications:
+
+* `Asymmetric Sign`
+* `2048 bit RSA key PKCS#1 v1.5 padding - SHA256 Digest`
+* `"Generate a key for me"`
+
+
+### B. Generate public/private key and import into KMS
+
+First generate a keypair on your local filesystem.  You can use `openssl` or any CA you own (make sure the key is enabled for digitalSignatures)
+
+For openssl based key, you can generate a CA and keypair as shown [here](https://github.com/salrashid123/gcegrpc/tree/master/certs).
+
+You must also generate an `x509` certificate since we will need that to import into KMS. Once youv'e generated a keypair, follow the [procedure to upload the external key](https://cloud.google.com/iam/docs/creating-managing-service-account-keys#uploading) into KMS.
+
+
+### Specify IAM permission on the keys to Sign
+
+However you've defined and uploaded the key to KMS, the client credential that is bootstrapped to use this TokenSource must have IAM permissions on that key to use it as `Cloud KMS CryptoKey Signer`. 
+
+
+Finally, specify the KMS setting as the `KmsTokenConfig` while bootstrapping the credential
+
+
+```golang
+	kmsTokenSource, err := salkms.KmsTokenSource(
+		salkms.KmsTokenConfig{
+			Email: "your_service_account@your_project.iam.gserviceaccount.com",
+
+			ProjectId:  "your_project",
+			LocationId: "us-central1",
+			KeyRing:    "yourkeyring",
+			Key:        "yourkey",
+			KeyVersion: "1",
+
+			Audience: "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
+			KeyID:    "yourkeyid",
+		},
+	)
+```
+
+### Usage YubiKeyTokenSource
+
+The `YubikeyTokenSource` can be found in a different repo [https://github.com/salrashid123/yubikey](https://github.com/salrashid123/yubikey)
