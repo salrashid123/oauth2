@@ -1,7 +1,7 @@
 
 # Google OpenID Connect (OIDC), Impersonated, KMS and TPM-based Credential TokenSource in golang
 
-Sample Reference that implements various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
+Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
 * a Google OpenID Connect token
 * an `access_token` that is impersonating another ServiceAccount.
@@ -18,20 +18,21 @@ For KMS based Credentials, you can either embed the ServiceAccounts Private key 
 
 For more information, see
 
-* OIDC:
- - [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
+**OIDC**
+* [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
 
-* Impersonated:
- - [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
- - [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
+**Impersonated**
 
-* TPM:
- - [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
- - [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
- - [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
+* [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
+* [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
 
-* KMS:
- - [mTLS with Google Cloud KMS](https://github.com/salrashid123/kms_golang_signer)
+**TPM**
+* [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
+* [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
+* [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
+
+**KMS**
+* [mTLS with Google Cloud KMS](https://github.com/salrashid123/kms_golang_signer)
 
 
 And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid123/yubikey)
