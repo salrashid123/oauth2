@@ -280,7 +280,7 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 
 --> You can either 
 
-* 1) download a Google ServiceAcount's `.p12` file  and embed the private part to the TPM 
+* 1) download a Google ServiceAccount's `.p12` file  and embed the private part to the TPM 
 or
 * 2) Generate a Key _ON THE TPM_ and then import the public part to GCP.
 
@@ -298,38 +298,45 @@ Anyway, either do (A) or (B) below (A is easier)
     openssl rsa -in private.pem -outform PEM -pubout -out public.pem
 ```
 
-3) Embed the key into a TPM 
-    install TPM2-Tools
-    [https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
+3) Embed the key into a TPM.
+   There are several ways to do this:  either install and use `tpm2_tools` or use `go-tpm`.  
+
+a) Using `go-tpm` is easier and I've setup a small app to import a service account key:
+
+   Run the following utility function which does the same steps as `tpm2_tools` sequence below but instead using [go-tpm](https://github.com/google/go-tpm).
+   - [https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go)
+  
+b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
+
+  Then setup a primary object on the TPM and import `private.pem` we created earlier
+
+```bash
+			tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
+			tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.prv
+			tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
+```
+
+  At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`:
 
 ```
-    tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
-    tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.prv
-    tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
+			# tpm2_evictcontrol -C o -c key.ctx 0x81010002
+			persistent-handle: 0x81010002
+			action: persisted
 ```
 
-At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`:
+	Some Notes:
 
-	```
-	# tpm2_evictcontrol -C o -c key.ctx 0x81010002
-	persistent-handle: 0x81010002
-	action: persisted
-	```
+  - there are several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
-Some Notes:
-
-- there are several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
-
-
-- You can also use `go-tpm` to make the key persistent if you dont' want to use `tpm2_tools`:
-  Run the following utility function which does the same steps as `tpm2_tools` sequence above but instead using [go-tpm](https://github.com/google/go-tpm).
-	- [https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go)
-
+---
 
 #### B) Generate key on TPM and export public X509 certificate to GCP
 
 1) Generate Key on TPM and make it persistent
-```
+
+The following uses `tpm2_tools` but is pretty straightfoward to do the same steps using `go-tpm` (see the [import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go) for a sample)
+
+```bash
 tpm2_createprimary -C e -g sha256 -G rsa -c primary.ctx
 tpm2_create -G rsa -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
@@ -340,7 +347,9 @@ tpm2_readpublic -c key.ctx -f PEM -o key.pem
 
 2) use the TPM based private key to create an `x509` certificate
 
-You can use [certgen.go](https://raw.githubusercontent.com/salrashid123/signer/master/certgen/certgen.go) here.  Remember to use 
+Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM.  We need to use it to sing for an x509 cert.  I've written the folling [certgen.go](https://raw.githubusercontent.com/salrashid123/signer/master/certgen/certgen.go) utility to do that.
+
+Remember to modify certgen.go and configure/enable the TPM Credential mode
 
 ```golang
 	r, err := saltpm.NewTPMCrypto(&saltpm.TPM{
@@ -349,7 +358,7 @@ You can use [certgen.go](https://raw.githubusercontent.com/salrashid123/signer/m
 	})
 ```
 
-the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
+Once you run certgen.go the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
 ```
  go run certgen.go 
 2019/11/28 00:49:55 Creating public x509
@@ -373,6 +382,8 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 9bd21535c9985ad922c1cf6bb3dbceef0f7375d6  2019-11-28T00:49:55Z  2020-11-27T00:49:55Z <<<<<<< note, this is the pubic cert for the TPM  based key!!
 7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
 ```
+
+---
 
 #### Post Step A) or B)
 
