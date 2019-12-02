@@ -1,12 +1,13 @@
 
-# Google OpenID Connect (OIDC), Impersonated, KMS and TPM-based Credential TokenSource in golang
+# The other Google Cloud Credential TokenSources in golang 
 
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
-* a Google OpenID Connect token
+* a Google OpenID Connect token (OIDC) usable for Google Cloud Run, Cloud Functions, Identiy Aware Proxy.
 * an `access_token` that is impersonating another ServiceAccount.
 * an `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
 * an `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
+* an `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 
 For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
 
@@ -15,6 +16,8 @@ For Impersonated Credentials, you will use a source [oauth2/google/Credential](h
 For TPM based Credentials, you will need to embed the ServiceAccount within a Trusted Platform Module.
 
 For KMS based Credentials, you can either embed the ServiceAccounts Private key within KMS or generate a Signing Key on KMS and then associate a service account with it.
+
+For Vault based Credentials, you need to first configure the a Vault policy that provides an  `access_token` for Google 
 
 For more information, see
 
@@ -33,6 +36,10 @@ For more information, see
 
 **KMS**
 * [mTLS with Google Cloud KMS](https://github.com/salrashid123/kms_golang_signer)
+
+**Vault**
+* [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
+* [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
 
 
 And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid123/yubikey)
@@ -277,8 +284,7 @@ The private key in raw form _not_ exposed to the filesystem or any process other
 
 	For example, create an Google Cloud [Shielded VM](https://cloud.google.com/security/shielded-cloud/shielded-vm).
 
-
---> You can either 
+You can either 
 
 * 1) download a Google ServiceAccount's `.p12` file  and embed the private part to the TPM 
 or
@@ -286,7 +292,7 @@ or
 
 Option 2 has some distinct advantages:  the private key would have never left the TPM at all...it was generated on the TPM....However, you have to be careful to import the public key and associate that public key with the service account.  What that means is you need to employ controls to assure that the public key you will import infact is the one that is associated with the TPM.
 
-Anyway, either do (A) or (B) below (A is easier)
+Anyway, either do (A) or (B) below.
 
 #### A) Import Service Account .p12 to TPM:
 
@@ -301,30 +307,30 @@ Anyway, either do (A) or (B) below (A is easier)
 3) Embed the key into a TPM.
    There are several ways to do this:  either install and use `tpm2_tools` or use `go-tpm`.  
 
-a) Using `go-tpm` is easier and I've setup a small app to import a service account key:
+   Using `go-tpm` is easier and I've setup a small app to import a service account key:
 
-   Run the following utility function which does the same steps as `tpm2_tools` sequence below but instead using [go-tpm](https://github.com/google/go-tpm).
-   - [https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go)
+    a) Run the following utility function which does the same steps as `tpm2_tools` but uses [go-tpm](https://github.com/google/go-tpm).
+     - [https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go)
   
-b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
+    b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
 
-  Then setup a primary object on the TPM and import `private.pem` we created earlier
+    Then setup a primary object on the TPM and import `private.pem` we created earlier
 
 ```bash
-			tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
-			tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.prv
-			tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
+	tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
+	tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.prv
+	tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 ```
 
-  At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`:
+    At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`:
 
 ```
-			# tpm2_evictcontrol -C o -c key.ctx 0x81010002
-			persistent-handle: 0x81010002
-			action: persisted
+	# tpm2_evictcontrol -C o -c key.ctx 0x81010002
+		persistent-handle: 0x81010002
+		action: persisted
 ```
 
-	Some Notes:
+  Some Notes:
 
   - there are several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
@@ -523,6 +529,78 @@ Finally, specify the KMS setting as the `KmsTokenConfig` while bootstrapping the
 
 			Audience: "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
 			KeyID:    "yourkeyid",
+		},
+	)
+```
+
+### Usage VaultTokenSource
+
+`VaultTokenSource` provides a google cloud credential and tokenSource derived from a `VAULT_TOKEN`.
+
+Vault must be configure first to return a valid `access_token` with appropriate permissions on the resource being accessed on GCP.
+
+For more information, see [Vault access_token for GCP](https://www.vaultproject.io/docs/secrets/gcp/index.html#access-tokens) and specific implementation [here](https://github.com/salrashid123/vault_gcp#accesstoken)
+
+As an example setup, consider a Vault HCL config for Google Secrets capable of listing pubsub topics in a project
+
+- `pubsub.hcl`
+```hcl
+resource "//cloudresourcemanager.googleapis.com/projects/$PROJECT_ID" {
+        roles = ["roles/pubsub.viewer"]
+}
+```
+
+Then apply a roleset that allows access as `my-token-roleset`:
+
+```bash
+vault write gcp/roleset/my-token-roleset   \
+   project="$PROJECT_ID"   \
+   secret_type="access_token" \
+   token_scopes="https://www.googleapis.com/auth/cloud-platform"  \
+   bindings=@pubsub.hcl
+```
+
+Generate a token for this given policy:
+
+```bash
+$ vault token create -policy=my-policy 
+Key                  Value
+---                  -----
+token                s.TsDU8YfeaVbpT9rLiZS7LcVJ
+token_accessor       HMkju91OWvR3u9tKJ8jrsYfo
+token_duration       768h
+token_renewable      true
+token_policies       ["default" "my-policy"]
+identity_policies    []
+policies             ["default" "my-policy"]
+```
+
+Verify the new token can return the access_token:
+
+```bash
+export VAULT_TOKEN=s.TsDU8YfeaVbpT9rLiZS7LcVJ
+
+vault read gcp/token/my-token-roleset
+Key                   Value
+---                   -----
+expires_at_seconds    1575132122
+token                 ya29.c.Kl6zB1_redacted
+token_ttl             59m59s
+```
+
+```bash
+curl  -H "X-Vault-Token: s.TsDU8YfeaVbpT9rLiZS7LcVJ"  --cacert CA_crt.pem   https://vault.domain.com:8200/v1/gcp/token/my-token-roleset
+```
+
+Finally, in a golang client, you can initialize it by specifying the `VAULT_TOKEN`, path the the certificate the vault server uses and the address:
+
+```golang
+	tokenSource, err := sal.VaultTokenSource(
+		sal.VaultTokenConfig{
+			VaultToken:  "s.TsDU8YfeaVbpT9rLiZS7LcVJ",
+			VaultPath:   "gcp/token/my-token-roleset",
+			VaultCAcert: "CA_crt.pem",
+			VaultAddr:   "https://vault.domain.com:8200",
 		},
 	)
 ```
