@@ -69,7 +69,7 @@ type kmsTokenSource struct {
 //  Key (string): Name of the key
 //  ProjectId (string): ProjectID of the KMS keyring.
 //
-func KmsTokenSource(tokenConfig KmsTokenConfig) (oauth2.TokenSource, error) {
+func KmsTokenSource(tokenConfig *KmsTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.Email == "" || tokenConfig.KeyID == "" || tokenConfig.Audience == "" || tokenConfig.KeyRing == "" || tokenConfig.LocationId == "" || tokenConfig.Key == "" {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: KMSTokenConfig keyID, Audience, Locaiton, Email, Key and keyring cannot be nil")

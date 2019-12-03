@@ -58,7 +58,7 @@ type tpmTokenSource struct {
 //      Find the keyId associated with the service account by running:
 //      `gcloud iam service-accounts keys list --iam-account=<email>``
 //
-func TpmTokenSource(tokenConfig TpmTokenConfig) (oauth2.TokenSource, error) {
+func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.Tpm == "" || tokenConfig.TpmHandle == 0 || tokenConfig.Email == "" || tokenConfig.Audience == "" {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.Tpm, TPMTokenConfig.TpmHandle, TPMTokenConfig.Email and Audience and cannot be nil")

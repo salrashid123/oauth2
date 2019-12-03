@@ -41,7 +41,7 @@ type VaultTokenConfig struct {
 //  VaultCAcert (string): The root CA Certificate for the Vault Server's endpoint
 //  VaultAddr (string): Hostname/Address URI for the vault server (https://your_vault.server:8200/)
 //
-func VaultTokenSource(tokenConfig VaultTokenConfig) (oauth2.TokenSource, error) {
+func VaultTokenSource(tokenConfig *VaultTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.VaultToken == "" || tokenConfig.VaultPath == "" || tokenConfig.VaultAddr == "" {
 		return nil, fmt.Errorf("oauth2/google: VaultToken, VaultPath, VaultAddr cannot be nil")

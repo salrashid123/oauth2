@@ -49,7 +49,7 @@ type IdTokenConfig struct {
 //  tokenConfig (IdTokenConfig): The root Credential object which will
 //      be used to generate the IDToken.
 // https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b
-func IdTokenSource(tokenConfig IdTokenConfig) (oauth2.TokenSource, error) {
+func IdTokenSource(tokenConfig *IdTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.Credentials == nil || tokenConfig.Audiences == nil {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: IdTokenConfig.Credentials and Audience and cannot be nil")

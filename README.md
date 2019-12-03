@@ -17,7 +17,7 @@ For TPM based Credentials, you will need to embed the ServiceAccount within a Tr
 
 For KMS based Credentials, you can either embed the ServiceAccounts Private key within KMS or generate a Signing Key on KMS and then associate a service account with it.
 
-For Vault based Credentials, you need to first configure the a Vault policy that provides an  `access_token` for Google 
+For Vault based Credentials, you need to first configure the a Vault policy that provides an  `access_token` for Google.
 
 For more information, see
 
@@ -27,7 +27,6 @@ For more information, see
 **Impersonated**
 
 * [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
-* [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
 
 **TPM**
 * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
@@ -43,6 +42,9 @@ For more information, see
 
 
 And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid123/yubikey)
+
+Other than providing `TokenSources` for GCP, most of the "key-based" sources can also be used to sign or decrypt data or even establish TLS connections:
+* [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
 
 > NOTE: This is NOT supported by Google
 
@@ -128,7 +130,7 @@ Now that you have a Credential, you can extract the token or just use it in an a
 
 ```golang
 idTokenSource, err := sal.IdTokenSource(
-	sal.IdTokenConfig{
+	&sal.IdTokenConfig{
 		Credentials: creds,
 		Audiences:   []string{targetAudience},
 	},
@@ -186,7 +188,7 @@ import (
         log.Fatal(err)
     }
     idTokenSource, err := sal.IdTokenSource(
-        sal.IdTokenConfig{
+        &sal.IdTokenConfig{
             Credentials: creds,
             Audiences:   []string{targetAudience},
         },
@@ -246,7 +248,7 @@ if err != nil {
 	log.Fatal(err)
 }
 tokenSource, err := sal.ImpersonatedTokenSource(
-	sal.ImpersonatedTokenConfig{
+	&sal.ImpersonatedTokenConfig{
 		RootTokenSource: rootTokenSource,
 		TargetPrincipal: targetPrincipal,
 		Lifetime:        lifetime,
@@ -416,7 +418,7 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 	func main() {
 
 		tpmTokenSource, err := sal.TpmTokenSource(
-			sal.TpmTokenConfig{
+			&sal.TpmTokenConfig{
 				Tpm:       "/dev/tpm0",
 				Email:     "svcA@your_project.iam.gserviceaccount.com",
 				TpmHandle: 0x81010002,
@@ -518,7 +520,7 @@ Finally, specify the KMS setting as the `KmsTokenConfig` while bootstrapping the
 
 ```golang
 	kmsTokenSource, err := salkms.KmsTokenSource(
-		salkms.KmsTokenConfig{
+		&salkms.KmsTokenConfig{
 			Email: "your_service_account@your_project.iam.gserviceaccount.com",
 
 			ProjectId:  "your_project",
@@ -596,7 +598,7 @@ Finally, in a golang client, you can initialize it by specifying the `VAULT_TOKE
 
 ```golang
 	tokenSource, err := sal.VaultTokenSource(
-		sal.VaultTokenConfig{
+		&sal.VaultTokenConfig{
 			VaultToken:  "s.TsDU8YfeaVbpT9rLiZS7LcVJ",
 			VaultPath:   "gcp/token/my-token-roleset",
 			VaultCAcert: "CA_crt.pem",

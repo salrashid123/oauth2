@@ -55,7 +55,7 @@ type ImpersonatedTokenConfig struct {
 // Note that this is not a standard OAuth flow, but rather uses Google Cloud
 // IAMCredentials API to exchange one oauth token for an impersonated account
 // see: https://cloud.google.com/iam/credentials/reference/rest/v1/projects.serviceAccounts/generateAccessToken
-func ImpersonatedTokenSource(tokenConfig ImpersonatedTokenConfig) (oauth2.TokenSource, error) {
+func ImpersonatedTokenSource(tokenConfig *ImpersonatedTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.RootTokenSource == nil {
 		return nil, fmt.Errorf("oauth2/google: rootSource cannot be nil")
