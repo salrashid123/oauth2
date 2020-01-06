@@ -74,8 +74,12 @@ type rtokenJSON struct {
 //
 func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
-	if tokenConfig.Tpm == "" || tokenConfig.TpmHandle == 0 || tokenConfig.Email == "" || tokenConfig.Audience == "" {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.Tpm, TPMTokenConfig.TpmHandle, TPMTokenConfig.Email and Audience and cannot be nil")
+	if tokenConfig.Tpm == "" || tokenConfig.TpmHandle == 0 || tokenConfig.Email == "" {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.Tpm, TPMTokenConfig.TpmHandle, TPMTokenConfig.Email and cannot be nil")
+	}
+
+	if (tokenConfig.Audience == "" || tokenConfig.KeyId == "") && tokenConfig.UseOauthToken == false {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience and keyID must be specified if UseOauthToken")
 	}
 
 	return &tpmTokenSource{

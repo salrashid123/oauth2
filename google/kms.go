@@ -79,12 +79,14 @@ type tokenJSON struct {
 //  Email (string): The service account to get the token for.
 //  Audience (string): The audience representing the service the token is valid for.
 //      The audience must match the name of the Service the token is intended for.  See
-//      documentation links above.
+//      documentation links above.  This field is optional if UseOauthToken
+//      is true.
 //      (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
-//  KeyID (string): The keyID for the ServiceAccount key.
+//  KeyID (string): The keyID for the ServiceAccount key.  This field is optional if UseOauthToken
+//      is true.
 //      Find the keyId associated with the service account by running:
 //      `gcloud iam service-accounts keys list --iam-account=<email>``
-//  KeyRng (string): The keyRing where the key is saved on KMS
+//  KeyRing (string): The keyRing where the key is saved on KMS
 //  LocationId (string): The location for the keyring
 //  Key (string): Name of the key
 //  ProjectId (string): ProjectID of the KMS keyring.
@@ -92,12 +94,12 @@ type tokenJSON struct {
 //
 func KmsTokenSource(tokenConfig *KmsTokenConfig) (oauth2.TokenSource, error) {
 
-	if tokenConfig.Email == "" || tokenConfig.KeyID == "" || tokenConfig.KeyRing == "" || tokenConfig.LocationId == "" || tokenConfig.Key == "" {
+	if tokenConfig.Email == "" || tokenConfig.KeyRing == "" || tokenConfig.LocationId == "" || tokenConfig.Key == "" {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: KMSTokenConfig keyID, Audience, Locaiton, Email, Key and keyring cannot be nil")
 	}
 
-	if tokenConfig.Audience == "" && tokenConfig.UseOauthToken == false {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: either UseOauthToken must be true if Audience is not specified")
+	if (tokenConfig.Audience == "" || tokenConfig.KeyID == "") && tokenConfig.UseOauthToken == false {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience and keyID must be specified if UseOauthToken")
 	}
 
 	return &kmsTokenSource{
