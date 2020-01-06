@@ -273,8 +273,17 @@ creds := &google.Credentials{
 
 >> **WARNING:**  `TpmTokenSource` is highly experimental.  This repo is NOT supported by Google
 
+There are two types of tokens this TokenSource fulfills:
 
-`google/oauth2/TpmTokenSource` is a variation of `google/oauth2/JWTAccessTokenSourceFromJSON` where the private key used to sign the JWT is embedded within a [Trusted Platform Module](https://en.wikipedia.org/wiki/Trusted_Platform_Module) (`TPM`).
+- `JWTAccessToken`
+- `Oauth2 access_tokens`.
+
+
+JWTAccessToken is a custom variation of the standard oauth2 access token that is works with just a certain subset of GCP apis.  What JWTAccessTokens do is locally sign a JWT and send that directly to GCP instead of the the normal oauth2 flows where the local signed token is exchanged for yet another `access_token`.  The flow where the the exchange for a local signed JWT for an access_token is the normal oauth2 flow.  If you use any of the services described [here](https://github.com/googleapis/googleapis/tree/master/google) (eg, PubSub), use JWTAccessToken.  If you use any other serivce (eg GCS), use oauth2.   JWTAccessTokens are enabled by default.  To enable oauth2access tokens, set `UseOauthToken: true`.
+
+For more inforamtion, see: [Faster ServiceAccount authentication for Google Cloud Platform APIs](https://medium.com/google-cloud/faster-serviceaccount-authentication-for-google-cloud-platform-apis-f1355abc14b2).
+
+This token source is a variation of `google/oauth2/JWTAccessTokenSourceFromJSON` where the private key used to sign the JWT is embedded within a [Trusted Platform Module](https://en.wikipedia.org/wiki/Trusted_Platform_Module) (`TPM`).
 
 The private key in raw form _not_ exposed to the filesystem or any process other than through the TPM interface.  This token source uses the TPM interface to `sign` the JWT which is then used to access a Google Cloud API.  
 
@@ -405,51 +414,68 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 	package main
 
 	import (
+		"context"
+		"fmt"
 		"log"
 		"net/http"
-		"cloud.google.com/go/pubsub"		
-		"golang.org/x/oauth2"
-		sal "github.com/salrashid123/oauth2/google"
 
+		"cloud.google.com/go/storage"
+
+		"cloud.google.com/go/pubsub"
+		sal "github.com/salrashid123/oauth2/google"
+		"golang.org/x/oauth2"
 		"google.golang.org/api/iterator"
-		"google.golang.org/api/option"	
+		"google.golang.org/api/option"
+	)
+
+	var (
+		projectId           = "your_project"
+		bucketName          = "your_bucket"
+		serviceAccountEmail = "your_service_account@your_project.iam.gserviceaccount.com"
+		keyId               = "your_key_id"
 	)
 
 	func main() {
-
-		tpmTokenSource, err := sal.TpmTokenSource(
+		ts, err := sal.TpmTokenSource(
 			&sal.TpmTokenConfig{
-				Tpm:       "/dev/tpm0",
-				Email:     "svcA@your_project.iam.gserviceaccount.com",
-				TpmHandle: 0x81010002,
-				Audience:  "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
-				KeyId:     "your_service_account_key_id",
+				Tpm:           "/dev/tpm0",
+				Email:         serviceAccountEmail,
+				TpmHandle:     0x81010002,
+				Audience:      "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
+				KeyId:         keyId,
+				UseOauthToken: false,
 			},
 		)
 
-		tok, err := tpmTokenSource.Token()
+		// tok, err := kmsTokenSource.Token()
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+		// //log.Printf("Token: %v", tok.AccessToken)
+
+		tok, err := ts.Token()
 		if err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("Token: %v", tok.AccessToken)
 		client := &http.Client{
 			Transport: &oauth2.Transport{
-				Source: tpmTokenSource,
+				Source: ts,
 			},
 		}
 
-		url := "https://pubsub.googleapis.com/v1/projects/your_project/topics"
+		ctx := context.Background()
+
+		url := fmt.Sprintf("https://pubsub.googleapis.com/v1/projects/%s/topics", projectId)
 		resp, err := client.Get(url)
 		if err != nil {
-			glog.Fatal(err)
+			log.Fatal(err)
 		}
 		log.Printf("Response: %v", resp.Status)
 
-
 		// Using google-cloud library
 
-		ctx := context.Background()
-		pubsubClient, err := pubsub.NewClient(ctx, proj, option.WithTokenSource(tpmTokenSource))
+		pubsubClient, err := pubsub.NewClient(ctx, projectId, option.WithTokenSource(ts))
 		if err != nil {
 			log.Fatalf("Could not create pubsub Client: %v", err)
 		}
@@ -464,8 +490,27 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 				log.Fatalf("Unable to iterate topics %v", err)
 			}
 			log.Printf("Topic: %s", topic.ID())
-		}		
+		}
+
+		// GCS does not support JWTAccessTokens, the following will only work if UseOauthToken is set to True
+		storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+		if err != nil {
+			log.Fatal(err)
+		}
+		sit := storageClient.Buckets(ctx, projectId)
+		for {
+			battrs, err := sit.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf(battrs.Name)
+		}
+
 	}
+
 	```
 
 * TODO, to fix:
@@ -479,6 +524,17 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 >> **WARNING:**  `KmsTokenSource` is  experimental.  This repo is NOT supported by Google
 
 Frankly, I'm not sure the feasibility or usecases for this tokenSource but what this allows you to do is use KMS as the keystorage system for a serviceAccount.  The obvious question is that to gain access to the KMS key you must already be authenticated...
+
+
+There are two types of tokens this TokenSource fulfills:
+
+- `JWTAccessToken`
+- `Oauth2 access_tokens`.
+
+JWTAccessToken is a custom variation of the standard oauth2 access token that is works with just a certain subset of GCP apis.  What JWTAccessTokens do is locally sign a JWT and send that directly to GCP instead of the the normal oauth2 flows where the local signed token is exchanged for yet another `access_token`.  The flow where the the exchange for a local signed JWT for an access_token is the normal oauth2 flow.  If you use any of the services described [here](https://github.com/googleapis/googleapis/tree/master/google) (eg, PubSub), use JWTAccessToken.  If you use any other serivce (eg GCS), use oauth2.  JWTAccessTokens are enabled by default.  To enable oauth2access tokens, set `UseOauthToken: true`.
+
+For more inforamtion, see: [Faster ServiceAccount authentication for Google Cloud Platform APIs](https://medium.com/google-cloud/faster-serviceaccount-authentication-for-google-cloud-platform-apis-f1355abc14b2).
+
 
 Suppose your credential does not directly grant you access to a resource but rather you must impersonate service account to do so (possibly with also some  [IAM Conditional](https://cloud.google.com/iam/docs/conditions-overview) as well).  You can that bit of impersonation via the impersonation credentials described in this repo but the other way is to acquire access to a service account key somehow.  One way to do that last part is to gain access through KMS API call.
 
@@ -531,6 +587,7 @@ Finally, specify the KMS setting as the `KmsTokenConfig` while bootstrapping the
 
 			Audience: "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
 			KeyID:    "yourkeyid",
+			UseAccessToken: false,
 		},
 	)
 ```
