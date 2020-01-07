@@ -82,8 +82,8 @@ type tokenJSON struct {
 //      documentation links above.  This field is optional if UseOauthToken
 //      is true.
 //      (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
-//  KeyID (string): The keyID for the ServiceAccount key.  This field is optional if UseOauthToken
-//      is true.
+//  KeyID (string): The keyID for the ServiceAccount key.  This field is optional but recomended if
+//      UseOauthTOken is false
 //      Find the keyId associated with the service account by running:
 //      `gcloud iam service-accounts keys list --iam-account=<email>``
 //  KeyRing (string): The keyRing where the key is saved on KMS
@@ -98,8 +98,8 @@ func KmsTokenSource(tokenConfig *KmsTokenConfig) (oauth2.TokenSource, error) {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: KMSTokenConfig keyID, Audience, Locaiton, Email, Key and keyring cannot be nil")
 	}
 
-	if (tokenConfig.Audience == "" || tokenConfig.KeyID == "") && tokenConfig.UseOauthToken == false {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience and keyID must be specified if UseOauthToken")
+	if tokenConfig.Audience == "" && tokenConfig.UseOauthToken == false {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience  must be specified if UseOauthToken is false")
 	}
 
 	return &kmsTokenSource{

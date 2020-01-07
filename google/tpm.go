@@ -68,6 +68,7 @@ type rtokenJSON struct {
 //  TpmHandle (uint32): The persistent Handle representing the sealed keypair.
 //      This must be set prior to using this library.
 //  KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
+//      This field is optional but recomended if  UseOauthTOken is false
 //      Find the keyId associated with the service account by running:
 //      `gcloud iam service-accounts keys list --iam-account=<email>``
 //  UseOauthToken (bool): Use oauth2 access_token (true) or JWTAccessToken (false)
@@ -78,8 +79,8 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.Tpm, TPMTokenConfig.TpmHandle, TPMTokenConfig.Email and cannot be nil")
 	}
 
-	if (tokenConfig.Audience == "" || tokenConfig.KeyId == "") && tokenConfig.UseOauthToken == false {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience and keyID must be specified if UseOauthToken")
+	if tokenConfig.Audience == "" && tokenConfig.UseOauthToken == false {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience must be specified if UseOauthToken is false")
 	}
 
 	return &tpmTokenSource{
