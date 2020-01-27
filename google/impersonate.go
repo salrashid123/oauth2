@@ -1,4 +1,4 @@
-// Copyright 2019 The Go Authors. All rights reserved.
+// Copyright 2020 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -6,12 +6,19 @@ package google
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jws"
+	"google.golang.org/api/iamcredentials/v1"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/oauth2"
-	"google.golang.org/api/iamcredentials/v1"
 )
 
 // ImpersonatedTokenConfig prameters to start Credential impersonation exchange.
@@ -21,6 +28,7 @@ type ImpersonatedTokenConfig struct {
 	Lifetime        time.Duration
 	Delegates       []string
 	TargetScopes    []string
+	Subject         string
 }
 
 // ImpersonatedTokenSource returns a TokenSource issued to a user or
@@ -40,17 +48,21 @@ type ImpersonatedTokenConfig struct {
 //  targetScopes ([]string): Scopes to request during the
 //     authorization grant.
 //  delegates ([]string): The chained list of delegates required
-//      to grant the final access_token. If set, the sequence of
-//      identities must have "Service Account Token Creator" capability
-//      granted to the preceeding identity. For example, if set to
-//      [serviceAccountB, serviceAccountC], the source_credential
-//      must have the Token Creator role on serviceAccountB.
-//      serviceAccountB must have the Token Creator on serviceAccountC.
-//      Finally, C must have Token Creator on target_principal.
-//      If left unset, source_credential must have that role on
-//      target_principal.
+//     to grant the final access_token. If set, the sequence of
+//     identities must have "Service Account Token Creator" capability
+//     granted to the preceeding identity. For example, if set to
+//     [serviceAccountB, serviceAccountC], the source_credential
+//     must have the Token Creator role on serviceAccountB.
+//     serviceAccountB must have the Token Creator on serviceAccountC.
+//     Finally, C must have Token Creator on target_principal.
+//     If left unset, source_credential must have that role on
+//     target_principal.
 //  lifetime (time.Duration): Number of seconds the impersonated credential should
 //     be valid for (up to 3600).
+//  subject (string): Subject fieild used for Gsuites Domain Wide Delegation.
+//     Specify this field ONLY if you wish to use Google GSuites Admin SDK and utilize
+//     domain wide delegation with impersonated credentials.
+//     https://developers.google.com/admin-sdk/directory/v1/guides/delegation
 //
 // Note that this is not a standard OAuth flow, but rather uses Google Cloud
 // IAMCredentials API to exchange one oauth token for an impersonated account
@@ -73,6 +85,7 @@ func ImpersonatedTokenSource(tokenConfig *ImpersonatedTokenConfig) (oauth2.Token
 		lifetime:        tokenConfig.Lifetime,
 		delegates:       tokenConfig.Delegates,
 		targetScopes:    tokenConfig.TargetScopes,
+		subject:         tokenConfig.Subject,
 	}, nil
 }
 
@@ -85,6 +98,7 @@ type impersonatedTokenSource struct {
 	lifetime        time.Duration
 	delegates       []string
 	targetScopes    []string
+	subject         string
 }
 
 func (ts *impersonatedTokenSource) Token() (*oauth2.Token, error) {
@@ -102,23 +116,94 @@ func (ts *impersonatedTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("oauth2/google: Error creating IAMCredentials: %v", err)
 	}
 	name := fmt.Sprintf("projects/-/serviceAccounts/%s", ts.targetPrincipal)
-	tokenRequest := &iamcredentials.GenerateAccessTokenRequest{
-		Lifetime:  fmt.Sprintf("%ds", int(ts.lifetime.Seconds())),
-		Delegates: ts.delegates,
-		Scope:     ts.targetScopes,
-	}
-	at, err := service.Projects.ServiceAccounts.GenerateAccessToken(name, tokenRequest).Do()
-	if err != nil {
-		return nil, fmt.Errorf("oauth2/google: Error calling iamcredentials.GenerateAccessToken: %v", err)
-	}
 
-	expireAt, err := time.Parse(time.RFC3339, at.ExpireTime)
-	if err != nil {
-		return nil, fmt.Errorf("oauth2/google: Error parsing ExpireTime from iamcredentials: %v", err)
+	var accessToken string
+	var expireAt time.Time
+	if ts.subject == "" {
+		tokenRequest := &iamcredentials.GenerateAccessTokenRequest{
+			Lifetime:  fmt.Sprintf("%ds", int(ts.lifetime.Seconds())),
+			Delegates: ts.delegates,
+			Scope:     ts.targetScopes,
+		}
+		at, err := service.Projects.ServiceAccounts.GenerateAccessToken(name, tokenRequest).Do()
+		if err != nil {
+			return nil, fmt.Errorf("oauth2/google: Error calling iamcredentials.GenerateAccessToken: %v", err)
+		}
+		accessToken = at.AccessToken
+		expireAt, err = time.Parse(time.RFC3339, at.ExpireTime)
+		if err != nil {
+			return nil, fmt.Errorf("oauth2/google: Error parsing ExpireTime from iamcredentials: %v", err)
+		}
+	} else {
+		// Domain-Wide Delgation token
+		// ref: https://github.com/googleapis/google-api-go-client/issues/379#issuecomment-514806450
+		// ref: https://gist.github.com/julianvmodesto/ed73201703dac8a047ec35a24dce4524
+		var iat = time.Now()
+		var exp = iat.Add(time.Hour)
+		var claims = &jws.ClaimSet{
+			Iss:   ts.targetPrincipal,
+			Scope: strings.Join(ts.targetScopes, " "),
+			Sub:   ts.subject,
+			Aud:   google.JWTTokenURL,
+			Iat:   iat.Unix(),
+			Exp:   exp.Unix(),
+		}
+		b, err := json.Marshal(claims)
+		if err != nil {
+			return nil, err
+		}
+		var signJwtRequest = &iamcredentials.SignJwtRequest{
+			Delegates: []string{name},
+			Payload:   string(b),
+		}
+		jwt, err := service.Projects.ServiceAccounts.SignJwt(name, signJwtRequest).Do()
+		if err != nil {
+			return nil, fmt.Errorf("error retrieving short-lived iamcredentials token: %v", err)
+		}
+		ctx := context.Background()
+		var hc = oauth2.NewClient(ctx, nil)
+		var v = url.Values{}
+		v.Set("grant_type", "assertion")
+		v.Set("assertion_type", "http://oauth.net/grant_type/jwt/1.0/bearer")
+		v.Set("assertion", jwt.SignedJwt)
+		resp, err := hc.PostForm(google.JWTTokenURL, v)
+		if err != nil {
+			return nil, fmt.Errorf("oauth2: cannot exchange jwt for access token: %v", err)
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			return nil, fmt.Errorf("oauth2: cannot exchange jwt for access token: %v", err)
+		}
+		if c := resp.StatusCode; c != http.StatusOK {
+			return nil, &oauth2.RetrieveError{
+				Response: resp,
+				Body:     body,
+			}
+		}
+		var tokenRes struct {
+			AccessToken string `json:"access_token"`
+			TokenType   string `json:"token_type"`
+			IDToken     string `json:"id_token"`
+			ExpiresIn   int64  `json:"expires_in"`
+		}
+
+		if err := json.Unmarshal(body, &tokenRes); err != nil {
+			return nil, fmt.Errorf("oauth2: cannot exchange jwt for access token: %v", err)
+		}
+
+		accessToken = tokenRes.AccessToken
+		now := time.Now()
+		now.Add(time.Second * time.Duration(tokenRes.ExpiresIn))
+		expireAt = now
+		if err != nil {
+			return nil, fmt.Errorf("oauth2/google: Error parsing ExpireTime from iamcredentials: %v", err)
+		}
+
 	}
 
 	ts.impersonatedToken = &oauth2.Token{
-		AccessToken: at.AccessToken,
+		AccessToken: accessToken,
 		Expiry:      expireAt,
 	}
 

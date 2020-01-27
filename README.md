@@ -8,6 +8,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
 * **KMS**: `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
+* **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
 
 For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
 
@@ -25,7 +26,6 @@ For more information, see
 * [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
 
 **Impersonated**
-
 * [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
 
 **TPM**
@@ -40,6 +40,7 @@ For more information, see
 * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
 * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
 
+**DownScoped**
 
 And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid123/yubikey)
 
@@ -236,6 +237,17 @@ ImpersonatedCredential is experimental (you'll only find it in this repo for now
 
 To use this credential type, you must allow the source credential the `iam/ServiceAccountTokenCreator` role on the target service account.  From there, you bootstrap the source, then the target and finally use the target in a google cloud api.
 
+There are two modes to using impersonated credentials which based on what apis you intent to invoke:
+
+1. Google Cloud APIS. 
+2. Gsuites AdminSDK APIs
+
+You will most likely use this library for GCP apis but if you intend to call Gsuites, the token will eed to utilize [Domain-wide Delegation](https://developers.google.com/admin-sdk/directory/v1/guides/delegation).
+
+### Impersonated with GCP APIs
+
+To use this mode, do not specify the `Subject` field in `ImpersonatedTokenSource` struct.  The resulting tokensource can be used directly in a google cloud client library
+
 ```golang
 targetPrincipal := "impersonated-account@fabled-ray-104117.iam.gserviceaccount.com"
 lifetime := 30 * time.Second
@@ -266,7 +278,61 @@ creds := &google.Credentials{
 }
 ```
 
+### Impersonated Credentials with Domain Wide Delegation
 
+Specify the `Subject` field to enable Domain-Wide Delegation
+
+```golang
+package main
+
+import (
+	sal "github.com/salrashid123/oauth2/google"
+	admin "google.golang.org/api/admin/directory/v1"
+)
+
+var (
+	serviceAccountFile = "/path/to/svc.json"
+	domain  = "yurdomain.com"
+	cx      = "yourGsuitesCustomerID"
+	subject = "admin@yourdomain.com"
+)
+
+func main() {
+	ctx := context.Background()
+	data, err := ioutil.ReadFile(serviceAccountFile)
+	creds, err := google.CredentialsFromJSON(ctx, data, "https://www.googleapis.com/auth/cloud-platform")
+	rootTokenSource := creds.TokenSource
+	// rootTokenSource, err := google.DefaultTokenSource(ctx,"https://www.googleapis.com/auth/iam")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	targetPrincipal := "domainadminsvc@project.iam.gserviceaccount.com"
+	lifetime := 30 * time.Second
+	delegates := []string{}
+	targetScopes := []string{admin.AdminDirectoryUserScope, admin.AdminDirectoryGroupScope}
+
+	tokenSource, err := sal.ImpersonatedTokenSource(
+		&sal.ImpersonatedTokenConfig{
+			RootTokenSource: rootTokenSource,
+			TargetPrincipal: targetPrincipal,
+			Lifetime:        lifetime,
+			Delegates:       delegates,
+			TargetScopes:    targetScopes,
+			Subject:         subject, // Spdcify the subjec for domain-wide-delegation
+		},
+	)
+	adminClient := oauth2.NewClient(ctx, tokenSource)
+	adminService, err := admin.New(adminClient)
+
+	usersReport, err := adminService.Users.List().Customer(cx).MaxResults(10).OrderBy("email").Do()
+	if err != nil {
+		log.Fatal(err)
+	}
+  ...
+  ...
+}
+```
 ---
 
 ## Usage TpmTokenSource
@@ -662,6 +728,93 @@ Finally, in a golang client, you can initialize it by specifying the `VAULT_TOKE
 			VaultAddr:   "https://vault.domain.com:8200",
 		},
 	)
+```
+
+### Usage DownScoped
+
+Downscoped credentials allows for exchanging a parent Credential's `access_token` for another `access_token` that has permissions on a limited set of resoruces the parent token originally had.
+
+For example, if the root Credential that represents Alice has access to GCS buckets A, B, C, you can exchange the Alice's credential for another  credential that still identifies Alice but can only be used against Bucket A.
+
+>> Downscoped tokens currently only works for GCS resources
+
+The following shows how to exchange a root credential for a downscoped credential that can only be used as `roles/storage.objectViewer` against GCS bucket `bucketName`.   Downscoped tokens are normally used in a tokenbroker/exchange service where you can mint a new restricted token to hand to a client.  The sample below shows how to generate a downscoped token, extract the raw `access_token`, and then inject the raw token in another `TokenSource` (instead of just using the DownScopedToken as the tokensource directly in the storageClient.).
+
+```golang
+package main
+
+import (
+	"context"
+	"log"
+
+	"cloud.google.com/go/storage"
+	sal "github.com/salrashid123/oauth2/google"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+)
+
+var (
+	projectID  = "your_project"
+	bucketName = "your_bucket"
+)
+
+func main() {
+
+	ctx := context.Background()
+
+	rootTokenSource, err := google.DefaultTokenSource(ctx,
+		"https://www.googleapis.com/auth/iam")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	downScopedTokenSource, err := sal.DownScopedTokenSource(
+		&sal.DownScopedTokenConfig{
+			RootTokenSource: rootTokenSource,
+			AccessBoundaryRules: []sal.AccessBoundaryRule{
+				sal.AccessBoundaryRule{
+					AvailableResource: "//storage.googleapis.com/projects/_/buckets/" + bucketName,
+					AvailablePermissions: []string{
+						"inRole:roles/storage.objectViewer",
+					},
+				},
+			},
+		},
+	)
+
+	// You can use the downscopeToken in the storage client below...but realistically,
+	// you would generate a rootToken, downscope it and then provide the new token to another client
+	// to use...similar to the bit below where the token itself is used to setup a StaticTokenSource
+	tok, err := downScopedTokenSource.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Downscoped Token: %s", tok.AccessToken)
+
+	sts := oauth2.StaticTokenSource(tok)
+
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(sts))
+	if err != nil {
+		log.Fatalf("Could not create storage Client: %v", err)
+	}
+
+	it := storageClient.Bucket(bucketName).Objects(ctx, nil)
+	for {
+
+		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println(attrs.Name)
+	}
+
+}
 ```
 
 ### Usage YubiKeyTokenSource
