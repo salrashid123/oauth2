@@ -347,7 +347,7 @@ There are two types of tokens this TokenSource fulfills:
 
 JWTAccessToken is a custom variation of the standard oauth2 access token that is works with just a certain subset of GCP apis.  What JWTAccessTokens do is locally sign a JWT and send that directly to GCP instead of the the normal oauth2 flows where the local signed token is exchanged for yet another `access_token`.  The flow where the the exchange for a local signed JWT for an access_token is the normal oauth2 flow.  If you use any of the services described [here](https://github.com/googleapis/googleapis/tree/master/google) (eg, PubSub), use JWTAccessToken.  If you use any other serivce (eg GCS), use oauth2.   JWTAccessTokens are enabled by default.  To enable oauth2access tokens, set `UseOauthToken: true`.
 
-For more inforamtion, see: [Faster ServiceAccount authentication for Google Cloud Platform APIs](https://medium.com/google-cloud/faster-serviceaccount-authentication-for-google-cloud-platform-apis-f1355abc14b2).
+For more information, see: [Faster ServiceAccount authentication for Google Cloud Platform APIs](https://medium.com/google-cloud/faster-serviceaccount-authentication-for-google-cloud-platform-apis-f1355abc14b2).
 
 This token source is a variation of `google/oauth2/JWTAccessTokenSourceFromJSON` where the private key used to sign the JWT is embedded within a [Trusted Platform Module](https://en.wikipedia.org/wiki/Trusted_Platform_Module) (`TPM`).
 
@@ -737,6 +737,8 @@ Downscoped credentials allows for exchanging a parent Credential's `access_token
 For example, if the root Credential that represents Alice has access to GCS buckets A, B, C, you can exchange the Alice's credential for another  credential that still identifies Alice but can only be used against Bucket A.
 
 >> Downscoped tokens currently only works for GCS resources
+
+For more information, see [https://github.com/salrashid123/downscoped_token](https://github.com/salrashid123/downscoped_token)
 
 The following shows how to exchange a root credential for a downscoped credential that can only be used as `roles/storage.objectViewer` against GCS bucket `bucketName`.   Downscoped tokens are normally used in a tokenbroker/exchange service where you can mint a new restricted token to hand to a client.  The sample below shows how to generate a downscoped token, extract the raw `access_token`, and then inject the raw token in another `TokenSource` (instead of just using the DownScopedToken as the tokensource directly in the storageClient.).
 

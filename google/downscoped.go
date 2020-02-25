@@ -36,19 +36,21 @@ type DownScopedTokenResponse struct {
 
 const (
 	TOKEN_INFO_ENDPOINT       = "https://www.googleapis.com/oauth2/v3/tokeninfo"
-	IDENTITY_BINDING_ENDPOINT = "https://securetoken.googleapis.com/v1alpha2/identitybindingtoken"
+	IDENTITY_BINDING_ENDPOINT = "https://securetoken.googleapis.com/v1beta1/identitybindingtoken"
 )
 
-// RestriDownScopedTokenSourcectedTokenSource returns a reduced capability Google Cloud TokenSource derived a
-// higher privleged TokenSource.
+// DownScopedTokenSource returns a reduced capability Google Cloud TokenSource derived a
+// higher privileged TokenSource.
 //
 // Use this TokenSource to limit the resources a credential can access on GCP.  For example,
-// if a givne TokenSource can access GCS buckets A and B, a DownScopedTokenSource derived from
-// the root would represent the _same_ user but IAM pemrissions are restricted to bucket A
+// if a given TokenSource can access GCS buckets A and B, a DownScopedTokenSource derived from
+// the root would represent the _same_ user but IAM permissions are restricted to bucket A.
+//
+//  For more information, see:  https://github.com/salrashid123/downscoped_token
 //
 //  RootTokenSource (string): The root token to derive the restricted one from
 //  DownScopedTokenConfig ([]AccessBoundaryRule): List of AccessBoundaryRule structures defining the
-//     what restriction policies to apply on a resource.  In the follwoing, the token that is returned
+//     what restriction policies to apply on a resource.  In the following, the token that is returned
 //     will only be valid to as an objectViewer on bucketA
 //     {
 // 	    "accessBoundaryRules" : [
