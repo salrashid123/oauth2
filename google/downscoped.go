@@ -36,7 +36,7 @@ type DownScopedTokenResponse struct {
 
 const (
 	TOKEN_INFO_ENDPOINT       = "https://www.googleapis.com/oauth2/v3/tokeninfo"
-	IDENTITY_BINDING_ENDPOINT = "https://securetoken.googleapis.com/v1beta1/identitybindingtoken"
+	IDENTITY_BINDING_ENDPOINT = "https://securetoken.googleapis.com/v2beta1/token"
 )
 
 // DownScopedTokenSource returns a reduced capability Google Cloud TokenSource derived a
