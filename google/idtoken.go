@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -240,24 +241,33 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 		}
 	}
 
-	// I'm only verifying the token here so that i can extract out the expiration date.
-	// TODO: just extract and parse, don't be lazy, sal
-	idt, err := VerifyGoogleIDToken(context.Background(), idToken, ts.audiences[0])
+	expiry, err := parseTokenExpiry(idToken)
 	if err != nil {
-		log.Fatalf("salrashid123/oauth2/google: Unable to verify OIDC token %v", err)
+		return nil, fmt.Errorf("salrashid123/oauth2/google: %v", err)
 	}
-
-	expireAt := idt.Expiry
-	if err != nil {
-		return nil, fmt.Errorf("salrashid123/oauth2/google: Error parsing ExpireTime from iamcredentials: %v", err)
-	}
-
 	ts.idToken = &oauth2.Token{
 		AccessToken: idToken,
-		Expiry:      expireAt,
+		Expiry:      expiry,
 	}
-
 	return ts.idToken, nil
+}
+
+func parseTokenExpiry(token string) (time.Time, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return time.Time{}, fmt.Errorf("parse token expiry: malformed JWT")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse token expiry: decode payload: %v", err)
+	}
+	var claims struct {
+		Expiry int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return time.Time{}, fmt.Errorf("parse token expiry: unmarshal claims: %v", err)
+	}
+	return time.Unix(claims.Expiry, 0), nil
 }
 
 // TokenSource here is used to initlaize gRPC Credentials
