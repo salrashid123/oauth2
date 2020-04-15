@@ -32,17 +32,24 @@ import (
 const (
 	googleRootCertURL      = "https://www.googleapis.com/oauth2/v3/certs"
 	metadataIdentityDocURL = "http://metadata/computeMetadata/v1/instance/service-accounts/default/identity"
+	GCEFullFormat          = "full"
 )
 
 var (
 	verifier *oidc.IDTokenVerifier
 )
 
+type GCEExtension struct {
+	Format       string
+	IncludeEmail bool
+}
+
 // IdTokeConfig parameters to initialize IdTokenSource
 //    Audience and Credential fields are both required.
 type IdTokenConfig struct {
-	Credentials *google.Credentials
-	Audiences   []string
+	Credentials  *google.Credentials
+	Audiences    []string
+	GCEExtension GCEExtension
 }
 
 // IdTokenSource returns a TokenSource which returns a GoogleOIDC token
@@ -60,6 +67,7 @@ func IdTokenSource(tokenConfig *IdTokenConfig) (oauth2.TokenSource, error) {
 		refreshMutex: &sync.Mutex{}, // guards impersonatedToken; held while fetching or updating it.
 		credentials:  *tokenConfig.Credentials,
 		audiences:    tokenConfig.Audiences,
+		gceExtension: tokenConfig.GCEExtension,
 	}, nil
 }
 
@@ -68,6 +76,7 @@ type idTokenSource struct {
 	idToken      *oauth2.Token // Token representing source identity.
 	credentials  google.Credentials
 	audiences    []string
+	gceExtension GCEExtension
 }
 
 // VerifyGoogleIDToken verifies the IdToken for expiration, signature against Google's certificates
@@ -222,7 +231,11 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 		} else if tok.RefreshToken == "" {
 			// if the token isn't a json cert or usercreds file, it should be a ReuseTokenSource from MetadataServer
 			client := &http.Client{}
-			req, err := http.NewRequest("GET", metadataIdentityDocURL+"?audience="+ts.audiences[0], nil)
+			u := metadataIdentityDocURL + "?audience=" + ts.audiences[0]
+			if ts.gceExtension.Format == GCEFullFormat {
+				u = u + "&format=full"
+			}
+			req, err := http.NewRequest("GET", u, nil)
 			req.Header.Add("Metadata-Flavor", "Google")
 			resp, err := client.Do(req)
 			if err != nil {
