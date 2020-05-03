@@ -849,9 +849,9 @@ func main() {
 
 ### Usage External
 
-External Credentials leaves the action of acquiring an `access_token` or `id_token` up to an external binary or script that gets called.  The binary MUST return json with the access token and optionally its type "Bearer" and the number of seconds the token will expire in.  
+External Credentials leaves the action of acquiring an `access_token` or `id_token` up to an external binary or script that gets called.  By **default**, binary MUST return json with the token and optionally its type "Bearer" and the number of seconds the token will expire in.  
 
-This credential type will simply call that as a subprocess and unmarshall the response json and extract the Token.  How the binary gets the token once invoked is left undefined (its upto you).
+This credential type will simply call that as a subprocess and unmarshall the response json and extract the `Token`.  How the binary gets the token once invoked is left undefined (its upto you).
 
 For example, you can use this in a number of ways by sourcing from environment variables, files or even remote api calls...they will all work as long as the response inclues the JSON struct:
 
@@ -866,12 +866,11 @@ type externalTokenResponse struct {
 If the external script or binary honors this request, the usage is like
 
 ```golang
-    // env-var
+    // env-var usage
 	extTokenSource, err := sal.ExternalTokenSource(
 		&sal.ExternalTokenConfig{
 			Command: "/usr/bin/echo",
 			Env:     []string{"foo=bar"},
-			//Args:    []string{"$ENV_TOKEN"},
 			Args: []string{os.ExpandEnv("$ENV_TOKEN")},
 		},
 	)
@@ -894,18 +893,55 @@ If the external script or binary honors this request, the usage is like
 		},
 	)
 
+	// with parser
+	extTokenSource, err := sal.ExternalTokenSource(
+		&sal.ExternalTokenConfig{
+			Command: "gcloud",
+			Env:     []string{"foo=bar"},
+			Args:    []string{"auth", "print-access-token"},
+			Parser: func(b []byte) (sal.ExternalTokenResponse, error) {
+				ret := &sal.ExternalTokenResponse{
+					Token:     string(b),
+					ExpiresIn: 3600,
+					TokenType: "Bearer",
+				}
+				return *ret, nil
+			},
+		},
+	)	
+	// or.. kerberos, certificate, saml, etc
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// then..
 	tok, err := extTokenSource.Token()
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("External Token: %s\n", tok.AccessToken)
-	fmt.Printf("Token Expiry: %t\n", tok.Valid())
+	fmt.Printf("Token Valid: %t\n", tok.Valid())
+```
 
-	// kerberos, certificate, saml, etc
+You can also apply a custom parser such that arbitrary responses can also be used.  For example, if the subprocess command returns a plain text string with just the access token (eg `gcloud auth print-access-token`), you can "just use" that token directly by specifying a Parser to handle the response.  In the example below, gcloud command returns a plain text string and not a JSON so a Parser will need to read the value as a string `Token:     string(b),` and set some default values
+
+```golang
+	extTokenSource, err := sal.ExternalTokenSource(
+		&sal.ExternalTokenConfig{
+			Command: "gcloud",
+			Env:     []string{"foo=bar"},
+			Args:    []string{"auth", "print-access-token"},
+			Parser: func(b []byte) (sal.ExternalTokenResponse, error) {
+				ret := &sal.ExternalTokenResponse{
+					Token:     string(b),
+					ExpiresIn: 3600,
+					TokenType: "Bearer",
+				}
+				return *ret, nil
+			},
+		},
+	)
 ```
 
 The distinct advantage of using this encapsulated within a `TokenSource` is that the refresh and management all happens within the context of the caller.  That is, you could use the 'file based' token source by reading it in directly, then manually making a TokenSource and then using that TokenSource within a GCP library like Cloud Storage.  However, when that static token expires, it is irrecoverable and the GCS client will fail even if a "new file with a new token" is available.  In contrast, if it is included within a TokenSource like this, the refresh is managed internally and the calling api library (eg, GCS) would not throw any exceptions.
