@@ -9,6 +9,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **KMS**: `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
+* **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
 
 For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
 
@@ -19,6 +20,8 @@ For TPM based Credentials, you will need to embed the ServiceAccount within a Tr
 For KMS based Credentials, you can either embed the ServiceAccounts Private key within KMS or generate a Signing Key on KMS and then associate a service account with it.
 
 For Vault based Credentials, you need to first configure the a Vault policy that provides an  `access_token` for Google.
+
+For External or process based Credentials, you must have an external binary or script that the credential type can can execute.  The external process __must__ return JSON with an `access_token`
 
 For more information, see
 
@@ -49,6 +52,12 @@ Other than providing `TokenSources` for GCP, most of the "key-based" sources can
 
 > NOTE: This is NOT supported by Google
 
+
+**External**
+
+This credential type allows for a flexible source for a GCP TokenSource.  You get to define how you acquire an access or id_token and incorporate that logic inside the binary that gets executed.  This credential type is inspired by:
+* [Kubernetes ExecConfig](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#configuration)
+* [AWS Process Credentials](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sourcing-external.html)
 
 ## Usage IDToken
 
@@ -837,6 +846,70 @@ func main() {
 
 }
 ```
+
+### Usage External
+
+External Credentials leaves the action of acquiring an `access_token` or `id_token` up to an external binary or script that gets called.  The binary MUST return json with the access token and optionally its type "Bearer" and the number of seconds the token will expire in.  
+
+This credential type will simply call that as a subprocess and unmarshall the response json and extract the Token.  How the binary gets the token once invoked is left undefined (its upto you).
+
+For example, you can use this in a number of ways by sourcing from environment variables, files or even remote api calls...they will all work as long as the response inclues the JSON struct:
+
+```golang
+type externalTokenResponse struct {
+	Token     string `json:"token"`
+	TokenType string `json:"token_type,omitempty"`
+	ExpiresIn int    `json:"expires_in,omitempty"`
+}
+```
+
+If the external script or binary honors this request, the usage is like
+
+```golang
+    // env-var
+	extTokenSource, err := sal.ExternalTokenSource(
+		&sal.ExternalTokenConfig{
+			Command: "/usr/bin/echo",
+			Env:     []string{"foo=bar"},
+			//Args:    []string{"$ENV_TOKEN"},
+			Args: []string{os.ExpandEnv("$ENV_TOKEN")},
+		},
+	)
+
+    // file
+	extTokenSource, err := sal.ExternalTokenSource(
+		&sal.ExternalTokenConfig{
+			Command: "/usr/bin/cat",
+			Env:     []string{"foo=bar"},
+			Args:    []string{"file_token.json"},
+		},
+	)
+
+    // external
+	extTokenSource, err := sal.ExternalTokenSource(
+		&sal.ExternalTokenConfig{
+			Command: "/usr/bin/curl",
+			Env:     []string{"foo=bar"},
+			Args:    []string{"-s", "https://gist.githubusercontent.com/salrashid123/8a8778aaa5743458b819245def9f8192/raw/bba367db1d18cbd6a99dca3c877d669498e5f742/exec.json"},
+		},
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tok, err := extTokenSource.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("External Token: %s\n", tok.AccessToken)
+	fmt.Printf("Token Expiry: %t\n", tok.Valid())
+
+	// kerberos, certificate, saml, etc
+```
+
+The distinct advantage of using this encapsulated within a `TokenSource` is that the refresh and management all happens within the context of the caller.  That is, you could use the 'file based' token source by reading it in directly, then manually making a TokenSource and then using that TokenSource within a GCP library like Cloud Storage.  However, when that static token expires, it is irrecoverable and the GCS client will fail even if a "new file with a new token" is available.  In contrast, if it is included within a TokenSource like this, the refresh is managed internally and the calling api library (eg, GCS) would not throw any exceptions.
+
 
 ### Usage YubiKeyTokenSource
 
