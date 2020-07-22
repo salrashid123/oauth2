@@ -10,6 +10,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
 * **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
+* **Using Impersonated IdTokens or Impersonated Downscoped Credentials**: Combining and chaining credential types
 
 For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
 
@@ -622,7 +623,7 @@ Finally, specify the KMS setting as the `KmsTokenConfig` while bootstrapping the
 	)
 ```
 
-### Usage VaultTokenSource
+## Usage VaultTokenSource
 
 `VaultTokenSource` provides a google cloud credential and tokenSource derived from a `VAULT_TOKEN`.
 
@@ -694,7 +695,7 @@ Finally, in a golang client, you can initialize it by specifying the `VAULT_TOKE
 	)
 ```
 
-### Usage DownScoped
+## Usage DownScoped
 
 Downscoped credentials allows for exchanging a parent Credential's `access_token` for another `access_token` that has permissions on a limited set of resoruces the parent token originally had.
 
@@ -881,6 +882,15 @@ You can also apply a custom parser such that arbitrary responses can also be use
 ```
 
 The distinct advantage of using this encapsulated within a `TokenSource` is that the refresh and management all happens within the context of the caller.  That is, you could use the 'file based' token source by reading it in directly, then manually making a TokenSource and then using that TokenSource within a GCP library like Cloud Storage.  However, when that static token expires, it is irrecoverable and the GCS client will fail even if a "new file with a new token" is available.  In contrast, if it is included within a TokenSource like this, the refresh is managed internally and the calling api library (eg, GCS) would not throw any exceptions.
+
+## Using Impersonated IdTokens or Impersonated Downscoped Credentials
+
+You can also mix and match several credential types together in a chain by applying one credential as a source to another.
+
+For example, to chain
+
+* Impersonated Credentials --> ID Token, see [impersonated->idtoken](https://gist.github.com/salrashid123/fd3236d7405748120089d2c93f71faac)
+* Impersonated Credentials --> Downscope, see [impersonated->downscoped](https://gist.github.com/salrashid123/c894e3029be76243761709cf834c7ed1)
 
 
 ### Usage YubiKeyTokenSource
