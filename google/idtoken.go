@@ -44,12 +44,17 @@ type GCEExtension struct {
 	IncludeEmail bool
 }
 
+type IAMExtension struct {
+	IncludeEmail bool
+}
+
 // IdTokeConfig parameters to initialize IdTokenSource
 //    Audience and Credential fields are both required.
 type IdTokenConfig struct {
 	Credentials  *google.Credentials
 	Audiences    []string
 	GCEExtension GCEExtension
+	IAMExtension IAMExtension
 }
 
 // IdTokenSource returns a TokenSource which returns a GoogleOIDC token
@@ -68,6 +73,7 @@ func IdTokenSource(tokenConfig *IdTokenConfig) (oauth2.TokenSource, error) {
 		credentials:  *tokenConfig.Credentials,
 		audiences:    tokenConfig.Audiences,
 		gceExtension: tokenConfig.GCEExtension,
+		iamextension: tokenConfig.IAMExtension,
 	}, nil
 }
 
@@ -77,6 +83,7 @@ type idTokenSource struct {
 	credentials  google.Credentials
 	audiences    []string
 	gceExtension GCEExtension
+	iamextension IAMExtension
 }
 
 // VerifyGoogleIDToken verifies the IdToken for expiration, signature against Google's certificates
@@ -129,8 +136,9 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 		}
 		name := fmt.Sprintf("projects/-/serviceAccounts/%s", its.targetPrincipal)
 		tokenRequest := &iamcredentials.GenerateIdTokenRequest{
-			Audience:  ts.audiences[0],
-			Delegates: its.delegates,
+			Audience:     ts.audiences[0],
+			Delegates:    its.delegates,
+			IncludeEmail: ts.iamextension.IncludeEmail,
 		}
 		at, err := service.Projects.ServiceAccounts.GenerateIdToken(name, tokenRequest).Do()
 		if err != nil {

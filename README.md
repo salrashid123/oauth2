@@ -61,175 +61,111 @@ This credential type allows for a flexible source for a GCP TokenSource.  You ge
 
 ## Usage IDToken
 
-You can bootstrap this library in a number of ways depending on where you are running this code.  You must acquire a [Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object and pass that into `IdTokenCredentials`
-
-You *CANNOT* use end user credentials such as those derived from your user account with oauth2 webflow.  You can use ServiceAccount, ComputeEngine or Impersonated Credentials as shown below
-
-- Import classes
+>> **UPDATE 5/10/20**  use `google.golang.org/api/idtoken` instead of this library
 
 ```golang
 package main
 
 import (
 	"context"
-	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 
-	sal "github.com/salrashid123/oauth2/google"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
+	"google.golang.org/api/idtoken"
 )
 
-const (
-	targetAudience = "https://your_target_audience.run.app"
-	url            = "https://your_endpoint.run.app"   // usually the same as targetAudience
-)
+const ()
+
 
 func main() {
-  ...
+
+	aud := "https://myapp-6w42z6vi3q-uc.a.run.app"
+	url := "https://httpbin.org/get"
+	jsonCert := "/path/to/svc.json"
+
+	ctx := context.Background()
+
+	ts, err := idtoken.NewTokenSource(ctx, aud, idtoken.WithCredentialsFile(jsonCert))
+	if err != nil {
+		log.Fatalf("unable to create TokenSource: %v", err)
+	}
+	tok, err := ts.Token()
+	if err != nil {
+		log.Fatalf("unable to retrieve Token: %v", err)
+	}
+	log.Printf("IDToken: %s", tok.AccessToken)
+	validTok, err := idtoken.Validate(ctx, tok.AccessToken, aud)
+	if err != nil {
+		log.Fatalf("token validation failed: %v", err)
+	}
+	if validTok.Audience != aud {
+		log.Fatalf("got %q, want %q", validTok.Audience, aud)
+	}
+
+	client, err := idtoken.NewClient(ctx, aud, idtoken.WithCredentialsFile(jsonCert))
+
+	if err != nil {
+		log.Fatalf("Could not generate NewClient: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Fatalf("Error Creating HTTP Request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("Error making authenticated call: %v", err)
+	}
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error Reading response body: %v", err)
+	}
+	bodyString := string(bodyBytes)
+	log.Printf("Authenticated Response: %v", bodyString)
+
 }
 ```
 
-You can pick the credential type that suits you:
+for gRPC:
+```golang
+	idTokenSource, err := idtoken.NewTokenSource(ctx, *targetAudience, idtoken.WithCredentialsFile(*serviceAccount))
+	if err != nil {
+		log.Fatalf("unable to create TokenSource: %v", err)
+	}
+	tok, err := idTokenSource.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("IdToken %s", tok)
 
-#### Default Credentials with ServiceAccount
+	var conn *grpc.ClientConn
 
-First export env vars pointing to svc_account
+	conn, err = grpc.Dial(*address,
 
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/pathy/svc.json
+		grpc.WithPerRPCCredentials(grpcTokenSource{
+			TokenSource: oauth.TokenSource{
+				idTokenSource,
+			},
+		}),
+	)
 ```
+
+Use 
+
+Anyway, I'm leaving the following in for reference:
 
 ```golang
-scopes := "https://www.googleapis.com/auth/userinfo.email"  // scopes here dont' really matter...
-creds, err := google.FindDefaultCredentials(ctx, scopes)
-if err != nil {
-	log.Fatal(err)
-}
-```
+import (
+	sal "github.com/salrashid123/oauth2/google"
+)
 
-#### ComputeEngine/GKE
-
-```golang
-scopes := "https://www.googleapis.com/auth/userinfo.email"
-creds, err := google.FindDefaultCredentials(ctx, scopes)
-if err != nil {
-	log.Fatal(err)
-}
-```
-
-#### ServiceAccount
-
-Read the certificate file and initialize a credential:
-
-```golang
-scopes := "https://www.googleapis.com/auth/userinfo.email"  // again, scopes don't really matter
-data, err := ioutil.ReadFile(jsonCert)
-if err != nil {
-	log.Fatal(err)
-}
-creds, err := google.CredentialsFromJSON(ctx, data, scopes)
-if err != nil {
-	log.Fatal(err)
-}
-```
-### Use IDToken in HTTP Client
-
-Now that you have a Credential, you can extract the token or just use it in an authorized client
-
-```golang
 idTokenSource, err := sal.IdTokenSource(
 	&sal.IdTokenConfig{
 		Credentials: creds,
 		Audiences:   []string{targetAudience},
 	},
 )
-client := &http.Client{
-	Transport: &oauth2.Transport{
-		Source: idTokenSource,
-	},
-}
-
-resp, err := client.Get(url)
-if err != nil {
-	log.Fatal(err)
-}
-log.Printf("Response: %v", resp.Status)
-```
-
-### Token Verification
-
-You can verify a rawToken against google public certifiates and audience
-
-```golang
-log.Printf("IdToken: %v", tok.AccessToken)
-idt, err := sal.VerifyGoogleIDToken(ctx, tok.AccessToken, targetAudience)
-if err != nil {
-	log.Fatal(err)
-}
-fmt.Printf("Token Verified with Audience: %v\n", idt.Audience)
-```
-
-### gRPC WithPerRPCCredentials
-
-To use IDTokens with gRPC channels, you can either
-
-A) Acquire credentials and use `NewIDTokenRPCCredential()` (preferable)
-   ```golang
-   rpcCreds, err := sal.NewIDTokenRPCCredential(ctx, idTokenSource)
-   ```
-OR
-
-B) apply the `Token()` to [oauth.NewOauthAccess()](https://godoc.org/google.golang.org/grpc/credentials/oauth#NewOauthAccess)
-and that directly into [grpc.WithPerRPCCredentials()](https://godoc.org/google.golang.org/grpc#WithPerRPCCredentials)
-
-```golang
-import (
-	"google.golang.org/grpc/credentials/oauth"
-	sal "github.com/salrashid123/oauth2/google"
-	...
-)
-   ...
-
-    scopes := "https://www.googleapis.com/auth/userinfo.email"
-    creds, err := google.FindDefaultCredentials(ctx, scopes)
-    if err != nil {
-        log.Fatal(err)
-    }
-    idTokenSource, err := sal.IdTokenSource(
-        &sal.IdTokenConfig{
-            Credentials: creds,
-            Audiences:   []string{targetAudience},
-        },
-	)
-	
-	// if you are using a token directly:	
-	/*
-	tok, err := idTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	rpcCreds := oauth.NewOauthAccess(tok)
-	*/
-
-	rpcCreds, err := sal.NewIDTokenRPCCredential(ctx, idTokenSource)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-    ce, err := credentials.NewClientTLSFromFile("server_crt.pem", "")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    conn, err := grpc.Dial(address, grpc.WithTransportCredentials(ce), grpc.WithPerRPCCredentials(rpcCreds))
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer conn.Close()
-
-    c := pb.NewEchoServerClient(conn)
 ```
 
 ## Usage ImpersonatedCredentials
