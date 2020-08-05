@@ -701,11 +701,13 @@ Downscoped credentials allows for exchanging a parent Credential's `access_token
 
 For example, if the root Credential that represents Alice has access to GCS buckets A, B, C, you can exchange the Alice's credential for another  credential that still identifies Alice but can only be used against Bucket A.
 
->> Downscoped tokens currently only works for GCS resources
+>> Downscoped tokens currently only works for certain GCP resources like GCS resources
 
 For more information, see [https://github.com/salrashid123/downscoped_token](https://github.com/salrashid123/downscoped_token)
 
 The following shows how to exchange a root credential for a downscoped credential that can only be used as `roles/storage.objectViewer` against GCS bucket `bucketName`.   Downscoped tokens are normally used in a tokenbroker/exchange service where you can mint a new restricted token to hand to a client.  The sample below shows how to generate a downscoped token, extract the raw `access_token`, and then inject the raw token in another `TokenSource` (instead of just using the DownScopedToken as the tokensource directly in the storageClient.).
+
+Note the `AvailabilityCondition`:  this parameter lets you define fine-grained controls such as specific resources like GCS objects the downscoped token has permissions over.
 
 ```golang
 package main
@@ -741,11 +743,19 @@ func main() {
 	downScopedTokenSource, err := sal.DownScopedTokenSource(
 		&sal.DownScopedTokenConfig{
 			RootTokenSource: rootTokenSource,
-			AccessBoundaryRules: []sal.AccessBoundaryRule{
-				sal.AccessBoundaryRule{
-					AvailableResource: "//storage.googleapis.com/projects/_/buckets/" + bucketName,
-					AvailablePermissions: []string{
-						"inRole:roles/storage.objectViewer",
+			DownscopedOptions: sal.DownscopedOptions{
+				AccessBoundary: sal.AccessBoundary{
+					AccessBoundaryRules: []sal.AccessBoundaryRule{
+						sal.AccessBoundaryRule{
+							AvailableResource: "//storage.googleapis.com/projects/_/buckets/" + bucketName,
+							AvailablePermissions: []string{
+								"inRole:roles/storage.objectViewer",
+							},
+							AvailabilityCondition: sal.AvailabilityCondition{
+								Title:      "obj-prefixes",
+								Expression: "resource.name.startsWith(\"projects/_/buckets/your_bucket/objects/foo.txt\")",
+							},
+						},
 					},
 				},
 			},
@@ -768,17 +778,15 @@ func main() {
 		log.Fatalf("Could not create storage Client: %v", err)
 	}
 
-	it := storageClient.Bucket(bucketName).Objects(ctx, nil)
-	for {
-
-		attrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println(attrs.Name)
+	bkt := storageClient.Bucket(bucketName)
+	obj := bkt.Object("foo.txt")
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer r.Close()
+	if _, err := io.Copy(os.Stdout, r); err != nil {
+		panic(err)
 	}
 
 }

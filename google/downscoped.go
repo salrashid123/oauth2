@@ -17,14 +17,28 @@ import (
 	"golang.org/x/oauth2"
 )
 
+type DownscopedOptions struct {
+	AccessBoundary AccessBoundary `json:"accessBoundary"`
+}
+
+type AccessBoundary struct {
+	AccessBoundaryRules []AccessBoundaryRule `json:"accessBoundaryRules"`
+}
+
+type AvailabilityCondition struct {
+	Title      string `json:"title,omitempty"`
+	Expression string `json:"expression,omitempty"`
+}
+
 type AccessBoundaryRule struct {
-	AvailableResource    string   `json:"availableResource"`
-	AvailablePermissions []string `json:"availablePermissions"`
+	AvailableResource     string                `json:"availableResource"`
+	AvailablePermissions  []string              `json:"availablePermissions"`
+	AvailabilityCondition AvailabilityCondition `json:"availabilityCondition,omitempty"`
 }
 
 type DownScopedTokenConfig struct {
-	RootTokenSource     oauth2.TokenSource
-	AccessBoundaryRules []AccessBoundaryRule `json:"accessBoundaryRules"`
+	RootTokenSource   oauth2.TokenSource
+	DownscopedOptions DownscopedOptions
 }
 
 type DownScopedTokenResponse struct {
@@ -36,7 +50,7 @@ type DownScopedTokenResponse struct {
 
 const (
 	TOKEN_INFO_ENDPOINT       = "https://www.googleapis.com/oauth2/v3/tokeninfo"
-	IDENTITY_BINDING_ENDPOINT = "https://securetoken.googleapis.com/v2beta1/token"
+	IDENTITY_BINDING_ENDPOINT = "https://sts.googleapis.com/v1beta/token"
 )
 
 // DownScopedTokenSource returns a reduced capability Google Cloud TokenSource derived a
@@ -44,21 +58,28 @@ const (
 //
 // Use this TokenSource to limit the resources a credential can access on GCP.  For example,
 // if a given TokenSource can access GCS buckets A and B, a DownScopedTokenSource derived from
-// the root would represent the _same_ user but IAM permissions are restricted to bucket A.
+// the root would represent the _same_ user but IAM permissions are restricted to bucket A or
+// even more specifically to bucket+object (bucketA/objectC.txt).
 //
 //  For more information, see:  https://github.com/salrashid123/downscoped_token
 //
 //  RootTokenSource (string): The root token to derive the restricted one from
-//  DownScopedTokenConfig ([]AccessBoundaryRule): List of AccessBoundaryRule structures defining the
+//  DownScopedTokenConfig ([]AccessBoundaryRule): List of AccessBoundary structures defining the
 //     what restriction policies to apply on a resource.  In the following, the token that is returned
 //     will only be valid to as an objectViewer on bucketA
 //     {
-// 	    "accessBoundaryRules" : [
-// 	      {
-// 		    "availableResource" : "//storage.googleapis.com/projects/_/buckets/bucketA",
-// 		    "availablePermissions": ["inRole:roles/storage.objectViewer"]
-// 	      }
-// 	    ]
+//	    "accessBoundary": {
+// 	    	"accessBoundaryRules" : [
+//	 	      	{
+//	 		    	"availableResource" : "//storage.googleapis.com/projects/_/buckets/bucketA",
+//	 		    	"availablePermissions": ["inRole:roles/storage.objectViewer"],
+//					"availabilityCondition" : {
+//		 				"title" : "obj-prefixes",
+//						"expression" : "resource.name.startsWith(\"projects/_/buckets/bucketA/objects/objectC.txt\")"
+//					}
+//	 	      	}
+// 	    	]
+//		}
 //     }
 //
 func DownScopedTokenSource(tokenConfig *DownScopedTokenConfig) (oauth2.TokenSource, error) {
@@ -68,18 +89,18 @@ func DownScopedTokenSource(tokenConfig *DownScopedTokenConfig) (oauth2.TokenSour
 	}
 
 	return &downScopedTokenSource{
-		refreshMutex:        &sync.Mutex{}, // guards restrictedToken; held while fetching or updating it.
-		downScopedToken:     nil,           // Token representing the restricted ten. Initially nil.
-		rootSource:          tokenConfig.RootTokenSource,
-		accessBoundaryRules: tokenConfig.AccessBoundaryRules,
+		refreshMutex:      &sync.Mutex{}, // guards restrictedToken; held while fetching or updating it.
+		downScopedToken:   nil,           // Token representing the restricted ten. Initially nil.
+		rootSource:        tokenConfig.RootTokenSource,
+		downscopedOptions: tokenConfig.DownscopedOptions,
 	}, nil
 }
 
 type downScopedTokenSource struct {
-	refreshMutex        *sync.Mutex // guards restrictedToken; held while fetching or updating it.
-	downScopedToken     *oauth2.Token
-	accessBoundaryRules []AccessBoundaryRule
-	rootSource          oauth2.TokenSource
+	refreshMutex      *sync.Mutex // guards restrictedToken; held while fetching or updating it.
+	downScopedToken   *oauth2.Token
+	downscopedOptions DownscopedOptions
+	rootSource        oauth2.TokenSource
 }
 
 func (ts *downScopedTokenSource) Token() (*oauth2.Token, error) {
@@ -96,13 +117,7 @@ func (ts *downScopedTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("oauth2/google: unable to refresh root token %v", err)
 	}
 
-	br, err := json.Marshal(
-		struct {
-			AccessBoundaryRules []AccessBoundaryRule `json:"accessBoundaryRules"`
-		}{
-			AccessBoundaryRules: ts.accessBoundaryRules,
-		},
-	)
+	br, err := json.Marshal(ts.downscopedOptions)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to marshall AccessBoundary Payload %v", err)
 	}
@@ -112,7 +127,7 @@ func (ts *downScopedTokenSource) Token() (*oauth2.Token, error) {
 	form.Add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
 	form.Add("requested_token_type", "urn:ietf:params:oauth:token-type:access_token")
 	form.Add("subject_token", tok.AccessToken)
-	form.Add("access_boundary", url.QueryEscape(string(br)))
+	form.Add("options", url.QueryEscape(string(br)))
 
 	resp, err := http.PostForm(IDENTITY_BINDING_ENDPOINT, form)
 	defer resp.Body.Close()
