@@ -171,6 +171,50 @@ idTokenSource, err := sal.IdTokenSource(
 
 ## Usage ImpersonatedCredentials
 
+>> ** UPDATE 9/29/20 ** : googlel.golang.org/api/options supports impersonated credentials directly against GCP APIs so there isn't a reason to use the `ImpersonatedCredentials` provided by this repo
+
+
+- [https://pkg.go.dev/google.golang.org/api/option#ImpersonateCredentials](https://pkg.go.dev/google.golang.org/api/option#ImpersonateCredentials)
+
+
+To acquire a raw `access_token` use:
+
+```golang
+package main
+
+import (
+    "context"
+    "log"
+
+    "google.golang.org/api/option"
+    "google.golang.org/api/transport"
+)
+
+func main() {
+
+    ctx := context.Background()
+    creds, err := transport.Creds(ctx,
+        option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
+        //option.WithCredentialsFile("/path/to/svc.json"),
+        option.ImpersonateCredentials("impersonated-account@fabled-ray-104117.iam.gserviceaccount.com"))
+    if err != nil {
+        log.Fatalf("%v", err)
+    }
+    ts := creds.TokenSource
+
+    tok, err := ts.Token()
+    if err != nil {
+        log.Fatalf("%v", err)
+    }
+    log.Printf("access_token %v", tok.AccessToken)
+
+}
+```
+
+---
+
+The section below for `ImpersonatedCredentials` is deprecated!!!  use the bit above please
+
 ImpersonatedCredential is experimental (you'll only find it in this repo for now).  `Impersonated Credentials` allows one service account or user to impersonate another service account.  This API already exits in `google-auth-python` and `google-auth-java`
 
 
