@@ -16,6 +16,8 @@ For OIDC, use this library to easily acquire Google OpenID Connect tokens for us
 
 For Impersonated Credentials, you will use a source [oauth2/google/Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object which as IAM permissions to assume another ServiceAccount and then finally perform operations as that account.
 
+For AWS based Credentials, you will exchange an AWS Credential for a Google Credential.
+
 For TPM based Credentials, you will need to embed the ServiceAccount within a Trusted Platform Module.
 
 For KMS based Credentials, you can either embed the ServiceAccounts Private key within KMS or generate a Signing Key on KMS and then associate a service account with it.
@@ -28,9 +30,14 @@ For more information, see
 
 **OIDC**
 * [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
+  > deprecated
 
 **Impersonated**
 * [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
+  > deprecated
+
+**AWS**
+* [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
 
 **TPM**
 * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
@@ -322,6 +329,142 @@ func main() {
   ...
   ...
 }
+```
+---
+
+## Usage AWS
+
+This credential type exchanges an AWS Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws) and utilizes
+[GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
+
+- For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-aws)
+
+- For GCP->AWS credential exchange, see [AWSCompat](https://github.com/salrashid123/awscompat)
+
+
+Sample usage
+
+```golang
+package main
+
+import (
+	"context"
+	"io"
+	"log"
+	"os"
+
+	"cloud.google.com/go/storage"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
+	sal "github.com/salrashid123/oauth2/google"
+	"google.golang.org/api/option"
+)
+
+const (
+	gcpBucketName  = "mineral-minutia-820-cab1"
+	gcpObjectName  = "foo.txt"
+	awsRegion      = "us-east-1"
+	awsRoleArn     = "arn:aws:iam::291738886548:role/gcpsts"
+	awsSessionName = "mysession"
+)
+
+var ()
+
+func main() {
+
+	AWS_ACCESS_KEY_ID := "readacted"
+	AWS_SECRET_ACCESS_KEY := "reacted"
+
+	// first just get any credentials
+	creds := credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
+
+	session, err := session.NewSession(&aws.Config{
+		Credentials: creds,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	conf := &aws.Config{
+		Region:      aws.String(awsRegion),
+		Credentials: creds,
+	}
+	// print out its identity
+	stsService := sts.New(session, conf)
+	input := &sts.GetCallerIdentityInput{}
+	result, err := stsService.GetCallerIdentity(input)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Original Caller Identity :" + result.GoString())
+
+	// now assume role and bootstrap the new tokens into another credential
+	params := &sts.AssumeRoleInput{
+		RoleArn:         aws.String(awsRoleArn),
+		RoleSessionName: aws.String(awsSessionName),
+	}
+	resp, err := stsService.AssumeRole(params)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Assumed user Arn: %s", *resp.AssumedRoleUser.Arn)
+	log.Printf("Assumed AssumedRoleId: %s", *resp.AssumedRoleUser.AssumedRoleId)
+	creds = credentials.NewStaticCredentials(*resp.Credentials.AccessKeyId, *resp.Credentials.SecretAccessKey, *resp.Credentials.SessionToken)
+
+	//creds = credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
+
+	// use that to print out the new identity specs and exchange for a GCP token
+	conf = &aws.Config{
+		Region:      aws.String(awsRegion),
+		Credentials: creds,
+	}
+	stsService = sts.New(session, conf)
+	input = &sts.GetCallerIdentityInput{}
+	result, err = stsService.GetCallerIdentity(input)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("New Caller Identity :" + result.GoString())
+
+	awsTokenSource, err := sal.AWSTokenSource(
+		&sal.AwsTokenConfig{
+			AwsCredential:        *creds,
+			Scope:                "https://www.googleapis.com/auth/cloud-platform",
+			TargetResource:       "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
+			Region:               "us-east-1",
+			TargetServiceAccount: "aws-federated@mineral-minutia-820.iam.gserviceaccount.com",
+		},
+	)
+
+	tok, err := awsTokenSource.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("AWS Derived GCP access_token: %s\n", tok.AccessToken)
+
+	// use the AWSTokenSource to call GCS
+	ctx := context.Background()
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
+	if err != nil {
+		log.Fatalf("Could not create storage Client: %v", err)
+	}
+
+	bkt := storageClient.Bucket(gcpBucketName)
+	obj := bkt.Object(gcpObjectName)
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer r.Close()
+	if _, err := io.Copy(os.Stdout, r); err != nil {
+		panic(err)
+	}
+
+}
+
 ```
 ---
 
