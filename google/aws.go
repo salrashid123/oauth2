@@ -42,6 +42,7 @@ type AwsTokenConfig struct {
 	TargetResource       string
 	Region               string
 	TargetServiceAccount string
+	UseIAMToken          bool
 }
 
 type iamGenerateAccessTokenResponse struct {
@@ -50,14 +51,38 @@ type iamGenerateAccessTokenResponse struct {
 }
 
 const (
-	GCP_STS_ENDPOINT = "https://sts.googleapis.com/v1beta/token"
-	AWS_STS_ENDPOINT = "https://sts.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15"
+	GCP_STS_ENDPOINT         = "https://sts.googleapis.com/v1beta/token"
+	AWS_STS_ENDPOINT         = "https://sts.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15"
+	GCP_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 )
+
+// AWSTokenSource exchanges AWS credentials for GCP credentials
+//
+// Use this TokenSource to access GCP resources while using AWS Credentials configured with
+//  either AssumeRole or directly as an AWS User.
+//
+//  For more information, see:  https://github.com/salrashid123/gcpcompat-aws
+//
+//  AwsCredential (aws.Credential): The root AWS Credential to use.  Maybe either a direct user
+//     user credential or one derived through AssumeRole
+//  Scope (string): The GCP Scope value for the GCP token. (default: cloud-platform)
+//  TargetResource (string): Full GCP URI of the workload identity pool.  eg
+//     "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
+//  Region (string): The AWS Region for the STS Service (eg us-east-1))
+//  TargetServiceAccount: (string): GCP ServiceAccount name that will get impersonated.   Used
+//     only if UseFederatedToken=false
+//  UseIAMToken:  (bool) Enables direct exchange of Federated Token for an IAMCredential token
+//     token for a service account token.  Set this value to false (i.,e use FederatedToken) only applies
+//     to a limited set of GCP services (at the moment, IAMCredentials, GCS).
 
 func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 
 	if &tokenConfig.AwsCredential == nil {
 		return nil, fmt.Errorf("oauth2/google: AwsCredential cannot be nil")
+	}
+
+	if tokenConfig.Scope == "" {
+		tokenConfig.Scope = GCP_CLOUD_PLATFORM_SCOPE
 	}
 	return &awsTokenSource{
 		refreshMutex:         &sync.Mutex{},
@@ -66,6 +91,7 @@ func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 		targetResource:       tokenConfig.TargetResource,
 		region:               tokenConfig.Region,
 		targetServiceAccount: tokenConfig.TargetServiceAccount,
+		useIAMToken:          tokenConfig.UseIAMToken,
 	}, nil
 }
 
@@ -77,6 +103,7 @@ type awsTokenSource struct {
 	targetTokenSource    *oauth2.Token
 	region               string
 	targetServiceAccount string
+	useIAMToken          bool
 }
 
 func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
@@ -184,6 +211,10 @@ func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
 		AccessToken: tresp.AccessToken,
 		TokenType:   tresp.TokenType,
 		Expiry:      time.Now().Add(time.Duration(tresp.ExpiresIn)),
+	}
+
+	if !ts.useIAMToken {
+		return ts.targetTokenSource, nil
 	}
 
 	iamEndpoint := fmt.Sprintf("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken", ts.targetServiceAccount)
