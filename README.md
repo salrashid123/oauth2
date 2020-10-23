@@ -3,8 +3,9 @@
 
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
-* **OIDC**: a Google OpenID Connect token (OIDC) usable for Google Cloud Run, Cloud Functions, Identiy Aware Proxy.
-* **Impersonated**: `access_token` that is impersonating another ServiceAccount.
+* **OIDC**:  a Google OpenID Connect token (OIDC) usable for Google Cloud Run, Cloud Functions, Identiy Aware Proxy. (_deprecated; see below_)
+* **Impersonated**: `access_token` that is impersonating another ServiceAccount. (_deprecated; see below_)
+* **AWS**: `access_token` for a Federated identity or GCP service account that is derived from AWSCredentials
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
 * **KMS**: `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
