@@ -6,6 +6,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **OIDC**:  a Google OpenID Connect token (OIDC) usable for Google Cloud Run, Cloud Functions, Identiy Aware Proxy. (_deprecated; see below_)
 * **Impersonated**: `access_token` that is impersonating another ServiceAccount. (_deprecated; see below_)
 * **AWS**: `access_token` for a Federated identity or GCP service account that is derived from AWSCredentials
+* **OIDC-Federated**: `access_token` for an arbitrary OIDC identity that is exchanged for a GCP Credential
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
 * **KMS**: `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
@@ -18,6 +19,8 @@ For OIDC, use this library to easily acquire Google OpenID Connect tokens for us
 For Impersonated Credentials, you will use a source [oauth2/google/Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object which as IAM permissions to assume another ServiceAccount and then finally perform operations as that account.
 
 For AWS based Credentials, you will exchange an AWS Credential for a Google Credential.
+
+For Federated OIDC based Credentials, you will exchange an arbitrary OIDC provicers Credential for a Google Credential.
 
 For TPM based Credentials, you will need to embed the ServiceAccount within a Trusted Platform Module.
 
@@ -39,6 +42,9 @@ For more information, see
 
 **AWS**
 * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
+
+**Federate OIDC**
+* [Accessing resources from OIDC Providers](https://cloud.google.com/iam/docs/access-resources-oidc)
 
 **TPM**
 * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
@@ -469,6 +475,77 @@ func main() {
 ```
 ---
 
+
+
+
+## Usage Federated OIDC
+
+This credential type exchanges an arbitrary OIDC Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from an OIDC identity provider](https://cloud.google.com/iam/docs/access-resources-oidcs) and utilizes
+[GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
+
+- For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-oidc)
+
+
+Sample usage
+
+```golang
+package main
+
+import (
+	"context"
+	"io"
+	"log"
+	"os"
+
+	"cloud.google.com/go/storage"
+	sal "github.com/salrashid123/oauth2/google"
+	"google.golang.org/api/option"
+)
+
+var ()
+
+func main() {
+
+	sourceToken := "eyJhbGci--redacted"
+	scope := "https://www.googleapis.com/auth/cloud-platform"
+	targetResource := "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/oidc-pool-1/providers/oidc-provider-1"
+	targetServiceAccount := "oidc-federated@mineral-minutia-820.iam.gserviceaccount.com"
+	gcpBucketName := "mineral-minutia-820-cab1"
+	gcpObjectName := "foo.txt"
+
+	oTokenSource, err := sal.OIDCFederatedTokenSource(
+		&sal.OIDCFederatedTokenConfig{
+			SourceToken:          sourceToken,
+			Scope:                scope,
+			TargetResource:       targetResource,
+			TargetServiceAccount: targetServiceAccount,
+			UseIAMToken:          true,
+		},
+	)
+
+	tok, err := oTokenSource.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("OIDC Derived GCP access_token: %s\n", tok.AccessToken)
+
+	ctx := context.Background()
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(oTokenSource))
+	if err != nil {
+		log.Fatalf("Could not create storage Client: %v", err)
+	}
+
+	bkt := storageClient.Bucket(gcpBucketName)
+	obj := bkt.Object(gcpObjectName)
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer r.Close()
+	if _, err := io.Copy(os.Stdout, r); err != nil {
+		panic(err)
+	}
+```
 ## Usage TpmTokenSource
 
 >> **WARNING:**  `TpmTokenSource` is highly experimental.  This repo is NOT supported by Google
