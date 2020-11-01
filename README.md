@@ -12,6 +12,37 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
 * **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
+* **STS**: `access_token` or `id_token` derived from interacting with an STS endpoint per [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
+
+
+>> **Update 11/1/20** Refactored modules!!!!
+
+Before:
+```golang
+import (
+	sal "github.com/salrashid123/oauth2/google"
+)
+```
+
+After
+
+```golang
+import (
+	aws "github.com/salrashid123/oauth2/google/aws"
+	downscoped "github.com/salrashid123/oauth2/google/downscoped"
+	external "github.com/salrashid123/oauth2/google/external"
+	idtoken "github.com/salrashid123/oauth2/google/idtoken"
+	impersonate "github.com/salrashid123/oauth2/google/impersonate"
+	oidcfederated "github.com/salrashid123/oauth2/google/oidcfederated"
+	kms "github.com/salrashid123/oauth2/google/kms"
+	sts "github.com/salrashid123/oauth2/google/sts"	
+	tpm "github.com/salrashid123/oauth2/google/tpm"
+	vault "github.com/salrashid123/oauth2/google/vault"
+	
+)
+
+```
+
 * **Using Impersonated IdTokens or Impersonated Downscoped Credentials**: Combining and chaining credential types
 
 For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
@@ -64,6 +95,10 @@ And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid12
 
 Other than providing `TokenSources` for GCP, most of the "key-based" sources can also be used to sign or decrypt data or even establish TLS connections:
 * [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
+
+**STS**
+* [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
+* [STS Server](https://github.com/salrashid123/sts_server)
 
 > NOTE: This is NOT supported by Google
 
@@ -172,7 +207,7 @@ Anyway, I'm leaving the following in for reference:
 
 ```golang
 import (
-	sal "github.com/salrashid123/oauth2/google"
+	sal "github.com/salrashid123/oauth2/google/idtoken"
 )
 
 idTokenSource, err := sal.IdTokenSource(
@@ -365,7 +400,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
-	sal "github.com/salrashid123/oauth2/google"
+	sal "github.com/salrashid123/oauth2/google/aws"
 	"google.golang.org/api/option"
 )
 
@@ -717,7 +752,7 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 		"cloud.google.com/go/storage"
 
 		"cloud.google.com/go/pubsub"
-		sal "github.com/salrashid123/oauth2/google"
+		sal "github.com/salrashid123/oauth2/google/tpm"
 		"golang.org/x/oauth2"
 		"google.golang.org/api/iterator"
 		"google.golang.org/api/option"
@@ -982,7 +1017,7 @@ import (
 	"log"
 
 	"cloud.google.com/go/storage"
-	sal "github.com/salrashid123/oauth2/google"
+	sal "github.com/salrashid123/oauth2/google/downscoped"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
@@ -1155,6 +1190,50 @@ You can also apply a custom parser such that arbitrary responses can also be use
 ```
 
 The distinct advantage of using this encapsulated within a `TokenSource` is that the refresh and management all happens within the context of the caller.  That is, you could use the 'file based' token source by reading it in directly, then manually making a TokenSource and then using that TokenSource within a GCP library like Cloud Storage.  However, when that static token expires, it is irrecoverable and the GCS client will fail even if a "new file with a new token" is available.  In contrast, if it is included within a TokenSource like this, the refresh is managed internally and the calling api library (eg, GCS) would not throw any exceptions.
+
+
+### Usage STS
+
+To use this tokensource, you need to have any token you can echange with an STS server.  You'll also need an STS server.
+
+For a sample server, see:
+
+- [https://tools.ietf.org/html/rfc8693](https://tools.ietf.org/html/rfc8693)
+- [https://github.com/salrashid123/sts_server](https://github.com/salrashid123/sts_server)
+
+To use this, you need to bootstrap a TokenSource...In the example below, the root token is `rootTS` that includes
+some arbitrary value.  That token is sent to n STS server at `https://stsserver-6w42z6vi3q-uc.a.run.app/token` which
+validate the rootToken secret, then returns back yet another Token that is wrapped into a new TokenSource.  The
+new tokensrouce can be used in an arbitrary client...not necessarily for a Google service
+
+```golang
+	client := &http.Client{}
+
+	rootTS := oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: secret,
+		TokenType:   "Bearer",
+		Expiry:      time.Now().Add(time.Duration(time.Second * 60)),
+	})
+	stsTokenSource, _ := sal.STSTokenSource(
+		&sal.STSTokenConfig{
+			TokenExchangeServiceURI: "https://stsserver-6w42z6vi3q-uc.a.run.app/token",
+			Resource:                "localhost",
+			Audience:                "localhost",
+			Scope:                   "https://www.googleapis.com/auth/cloud-platform",
+			SubjectTokenSource:      rootTS,
+			SubjectTokenType:        "urn:ietf:params:oauth:token-type:access_token",
+			RequestedTokenType:      "urn:ietf:params:oauth:token-type:access_token",
+		},
+	)
+
+	client = oauth2.NewClient(context.TODO(), stsTokenSource)
+	resp, err := client.Get("http://localhost:8080/")
+	if err != nil {
+		log.Printf("Error creating client %v", err)
+		return
+	}
+```
+
 
 ## Using Impersonated IdTokens or Impersonated Downscoped Credentials
 
