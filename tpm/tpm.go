@@ -6,14 +6,14 @@ package google
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"time"
-	"encoding/base64"
-	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -147,7 +147,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		}
 		cs, err := json.Marshal(&jws.ClaimSet{
 			Iss:   ts.email,
-			Scope: CLOUD_PLATFORM_SCOPE,
+			Scope: "https://www.googleapis.com/auth/cloud-platform",
 			Aud:   "https://accounts.google.com/o/oauth2/token",
 			Iat:   iat.Unix(),
 			Exp:   exp.Unix(),
@@ -159,11 +159,11 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		j := base64.URLEncoding.EncodeToString([]byte(hdr)) + "." + base64.URLEncoding.EncodeToString([]byte(cs))
 		aKdataToSign := []byte(j)
 		aKdigest, aKvalidation, err := tpm2.Hash(rwc, tpm2.AlgSHA256, aKdataToSign, tpm2.HandleOwner)
-		if err != nil {			
+		if err != nil {
 			return nil, fmt.Errorf("google: Unable to Sign wit TPM: %v", err)
 		}
 
-		sig, err := tpm2.Sign(rwc, kh, "",  aKdigest, aKvalidation, &tpm2.SigScheme{
+		sig, err := tpm2.Sign(rwc, kh, "", aKdigest, aKvalidation, &tpm2.SigScheme{
 			Alg:  tpm2.AlgRSASSA,
 			Hash: tpm2.AlgSHA256,
 		})
@@ -230,7 +230,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 		aKdataToSign := []byte(j)
 		aKdigest, aKvalidation, err := tpm2.Hash(rwc, tpm2.AlgSHA256, aKdataToSign, tpm2.HandleOwner)
-		if err != nil {			
+		if err != nil {
 			return nil, fmt.Errorf("google: Unable to Sign wit TPM: %v", err)
 		}
 		sig, err := tpm2.Sign(rwc, kh, "", aKdigest, aKvalidation, &tpm2.SigScheme{
