@@ -20,7 +20,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 Before:
 ```golang
 import (
-	sal "github.com/salrashid123/oauth2/google"
+	sal "github.com/salrashid123/oauth2"
 )
 ```
 
@@ -28,16 +28,16 @@ After
 
 ```golang
 import (
-	aws "github.com/salrashid123/oauth2/google/aws"
-	downscoped "github.com/salrashid123/oauth2/google/downscoped"
-	external "github.com/salrashid123/oauth2/google/external"
-	idtoken "github.com/salrashid123/oauth2/google/idtoken"
-	impersonate "github.com/salrashid123/oauth2/google/impersonate"
-	oidcfederated "github.com/salrashid123/oauth2/google/oidcfederated"
-	kms "github.com/salrashid123/oauth2/google/kms"
-	sts "github.com/salrashid123/oauth2/google/sts"	
-	tpm "github.com/salrashid123/oauth2/google/tpm"
-	vault "github.com/salrashid123/oauth2/google/vault"
+	aws "github.com/salrashid123/oauth2/aws"
+	downscoped "github.com/salrashid123/oauth2/downscoped"
+	external "github.com/salrashid123/oauth2/external"
+	idtoken "github.com/salrashid123/oauth2/idtoken"
+	impersonate "github.com/salrashid123/oauth2/impersonate"
+	oidcfederated "github.com/salrashid123/oauth2/oidcfederated"
+	kms "github.com/salrashid123/oauth2/kms"
+	sts "github.com/salrashid123/oauth2/sts"	
+	tpm "github.com/salrashid123/oauth2/tpm"
+	vault "github.com/salrashid123/oauth2/vault"
 	
 )
 
@@ -207,7 +207,7 @@ Anyway, I'm leaving the following in for reference:
 
 ```golang
 import (
-	sal "github.com/salrashid123/oauth2/google/idtoken"
+	sal "github.com/salrashid123/oauth2/idtoken"
 )
 
 idTokenSource, err := sal.IdTokenSource(
@@ -325,7 +325,7 @@ Specify the `Subject` field to enable Domain-Wide Delegation
 package main
 
 import (
-	sal "github.com/salrashid123/oauth2/google"
+	sal "github.com/salrashid123/oauth2/impersonate"
 	admin "google.golang.org/api/admin/directory/v1"
 )
 
@@ -400,7 +400,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
-	sal "github.com/salrashid123/oauth2/google/aws"
+	sal "github.com/salrashid123/oauth2/aws"
 	"google.golang.org/api/option"
 )
 
@@ -533,7 +533,7 @@ import (
 	"os"
 
 	"cloud.google.com/go/storage"
-	sal "github.com/salrashid123/oauth2/google"
+	sal "github.com/salrashid123/oauth2/oidcfederated"
 	"google.golang.org/api/option"
 )
 
@@ -752,7 +752,7 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 		"cloud.google.com/go/storage"
 
 		"cloud.google.com/go/pubsub"
-		sal "github.com/salrashid123/oauth2/google/tpm"
+		sal "github.com/salrashid123/oauth2/tpm"
 		"golang.org/x/oauth2"
 		"google.golang.org/api/iterator"
 		"google.golang.org/api/option"
@@ -1017,7 +1017,7 @@ import (
 	"log"
 
 	"cloud.google.com/go/storage"
-	sal "github.com/salrashid123/oauth2/google/downscoped"
+	sal "github.com/salrashid123/oauth2/downscoped"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
