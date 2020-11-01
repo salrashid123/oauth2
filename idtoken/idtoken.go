@@ -25,7 +25,6 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jws"
-	"google.golang.org/api/iamcredentials/v1"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -127,27 +126,31 @@ func (ts *idTokenSource) Token() (*oauth2.Token, error) {
 
 	// first check if the provided token is impersonated
 	switch ts.credentials.TokenSource.(type) {
-	case *impersonatedTokenSource:
-		its := ts.credentials.TokenSource.(*impersonatedTokenSource)
-		client := oauth2.NewClient(context.TODO(), its.rootSource)
-		service, err := iamcredentials.New(client)
-		if err != nil {
-			return nil, fmt.Errorf("salrashid123/oauth2/google: Error creating IAMCredentials: %v", err)
-		}
-		name := fmt.Sprintf("projects/-/serviceAccounts/%s", its.targetPrincipal)
-		tokenRequest := &iamcredentials.GenerateIdTokenRequest{
-			Audience:     ts.audiences[0],
-			Delegates:    its.delegates,
-			IncludeEmail: ts.iamextension.IncludeEmail,
-		}
-		at, err := service.Projects.ServiceAccounts.GenerateIdToken(name, tokenRequest).Do()
-		if err != nil {
-			return nil, fmt.Errorf("salrashid123/oauth2/google:: Error calling iamcredentials.GenerateIdToken: %v", err)
-		}
-		idToken = at.Token
 
-	// TODO: once merged to googe/oauth2, use *oauth2.reuseTokenSource (can't use it now since its not exported outside)
-	//  https://github.com/golang/oauth2/blob/master/oauth2.go#L288
+	// TODO: i broke thispartwhe i made moved impersonated
+	// creds out of the single module directory.
+	// 	idt "github.com/salrashid123/oauth2/impersonate"
+	// case idt.*(impersonatedTokenSource):
+	// 	its := ts.credentials.TokenSource.(*impersonatedTokenSource)
+	// 	client := oauth2.NewClient(context.TODO(), its.rootSource)
+	// 	service, err := iamcredentials.New(client)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("salrashid123/oauth2/google: Error creating IAMCredentials: %v", err)
+	// 	}
+	// 	name := fmt.Sprintf("projects/-/serviceAccounts/%s", its.targetPrincipal)
+	// 	tokenRequest := &iamcredentials.GenerateIdTokenRequest{
+	// 		Audience:     ts.audiences[0],
+	// 		Delegates:    its.delegates,
+	// 		IncludeEmail: ts.iamextension.IncludeEmail,
+	// 	}
+	// 	at, err := service.Projects.ServiceAccounts.GenerateIdToken(name, tokenRequest).Do()
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("salrashid123/oauth2/google:: Error calling iamcredentials.GenerateIdToken: %v", err)
+	// 	}
+	// 	idToken = at.Token
+
+	// // TODO: once merged to googe/oauth2, use *oauth2.reuseTokenSource (can't use it now since its not exported outside)
+	// //  https://github.com/golang/oauth2/blob/master/oauth2.go#L288
 	default:
 		// if not, the its either UserCredentials, ComputeCredentials or ServiceAccount, either way, it should have
 		// and existing Token()
