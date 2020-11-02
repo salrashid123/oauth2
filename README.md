@@ -13,7 +13,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
 * **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
 * **STS**: `access_token` or `id_token` derived from interacting with an STS endpoint per [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
-
+* **MyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
 
 >> **Update 11/1/20** Refactored modules!!!!
 
@@ -1092,7 +1092,7 @@ func main() {
 }
 ```
 
-### Usage External
+## Usage External
 
 External Credentials leaves the action of acquiring an `access_token` or `id_token` up to an external binary or script that gets called.  By **default**, binary MUST return json with the token and optionally its type "Bearer" and the number of seconds the token will expire in.  
 
@@ -1192,7 +1192,7 @@ You can also apply a custom parser such that arbitrary responses can also be use
 The distinct advantage of using this encapsulated within a `TokenSource` is that the refresh and management all happens within the context of the caller.  That is, you could use the 'file based' token source by reading it in directly, then manually making a TokenSource and then using that TokenSource within a GCP library like Cloud Storage.  However, when that static token expires, it is irrecoverable and the GCS client will fail even if a "new file with a new token" is available.  In contrast, if it is included within a TokenSource like this, the refresh is managed internally and the calling api library (eg, GCS) would not throw any exceptions.
 
 
-### Usage STS
+## Usage STS
 
 To use this tokensource, you need to have any token you can echange with an STS server.  You'll also need an STS server.
 
@@ -1209,10 +1209,9 @@ new tokensrouce can be used in an arbitrary client...not necessarily for a Googl
 ```golang
 	client := &http.Client{}
 
-	rootTS := oauth2.StaticTokenSource(&oauth2.Token{
-		AccessToken: secret,
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(time.Duration(time.Second * 60)),
+	rootTS, err := mytokensource.NewMyTokenSource(&testts.MyTokenConfig{
+		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
+		RotationIntervalSeconds: 10,
 	})
 	stsTokenSource, _ := sal.STSTokenSource(
 		&sal.STSTokenConfig{
@@ -1234,6 +1233,20 @@ new tokensrouce can be used in an arbitrary client...not necessarily for a Googl
 	}
 ```
 
+## Usage MyTokenSource
+
+To use this tokensource, just specify the list of tokens to return and the interval to rotate/expire the current one.
+
+```golang
+import (
+		testts "github.com/salrashid123/oauth2/mytokensource"
+)
+
+	myts, err := testts.NewMyTokenSource(&testts.MyTokenConfig{
+		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
+		RotationIntervalSeconds: 10,
+	})
+```
 
 ## Using Impersonated IdTokens or Impersonated Downscoped Credentials
 
