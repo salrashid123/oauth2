@@ -13,7 +13,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
 * **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
 * **STS**: `access_token` or `id_token` derived from interacting with an STS endpoint per [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
-* **MyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
+* **DummyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
 
 >> **Update 11/1/20** Refactored modules!!!!
 
@@ -1209,7 +1209,7 @@ new tokensrouce can be used in an arbitrary client...not necessarily for a Googl
 ```golang
 	client := &http.Client{}
 
-	rootTS, err := mytokensource.NewMyTokenSource(&testts.MyTokenConfig{
+	rootTS, err := dummytokensource.NewDummyTokenSource(&testts.DummyTokenConfig{
 		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
 		RotationIntervalSeconds: 10,
 	})

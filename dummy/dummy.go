@@ -12,7 +12,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type MyTokenConfig struct {
+type DummyTokenConfig struct {
 	TokenValues             []string
 	RotationIntervalSeconds int
 }
@@ -25,29 +25,29 @@ var (
 )
 
 /*
-	MyTokenSource is just a testtokensource
+	DummyTokenSource is just a testtokensourcethat'll rotate keys every now andthen
 */
-func NewMyTokenSource(tokenConfig *MyTokenConfig) (oauth2.TokenSource, error) {
+func NewDummyTokenSource(tokenConfig *DummyTokenConfig) (oauth2.TokenSource, error) {
 
 	if len(tokenConfig.TokenValues) == 0 {
 		return nil, fmt.Errorf("oauth2/google: initToken cannot be nil")
 	}
 	lastRefresh = time.Now()
-	return &myTokenSource{
+	return &dummyTokenSource{
 		refreshMutex:            &sync.Mutex{},
 		tokenValues:             tokenConfig.TokenValues,
 		rotationIntervalSeconds: tokenConfig.RotationIntervalSeconds,
 	}, nil
 }
 
-type myTokenSource struct {
+type dummyTokenSource struct {
 	refreshMutex            *sync.Mutex
 	tokenValues             []string
 	rotationIntervalSeconds int
 	myToken                 *oauth2.Token
 }
 
-func (ts *myTokenSource) Token() (*oauth2.Token, error) {
+func (ts *dummyTokenSource) Token() (*oauth2.Token, error) {
 
 	ts.refreshMutex.Lock()
 	defer ts.refreshMutex.Unlock()
