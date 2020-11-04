@@ -1233,16 +1233,16 @@ new tokensrouce can be used in an arbitrary client...not necessarily for a Googl
 	}
 ```
 
-## Usage MyTokenSource
+## Usage DummyTokenSource
 
 To use this tokensource, just specify the list of tokens to return and the interval to rotate/expire the current one.
 
 ```golang
 import (
-		testts "github.com/salrashid123/oauth2/mytokensource"
+		testts "github.com/salrashid123/oauth2/dummy"
 )
 
-	myts, err := testts.NewMyTokenSource(&testts.MyTokenConfig{
+	myts, err := testts.NewDummyTokenSource(&testts.DummyTokenConfig{
 		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
 		RotationIntervalSeconds: 10,
 	})
@@ -1254,7 +1254,7 @@ You can also mix and match several credential types together in a chain by apply
 
 For example, to chain
 
-* Impersonated Credentials --> ID Token, see [impersonated->idtoken](https://gist.github.com/salrashid123/fd3236d7405748120089d2c93f71faac)
+* [doens not work anymore :(  Impersonated Credentials --> ID Token, see [impersonated->idtoken](https://gist.github.com/salrashid123/fd3236d7405748120089d2c93f71faac)
 * Impersonated Credentials --> Downscope, see [impersonated->downscoped](https://gist.github.com/salrashid123/c894e3029be76243761709cf834c7ed1)
 
 
