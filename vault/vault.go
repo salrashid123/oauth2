@@ -141,7 +141,7 @@ func (ts *vaultTokenSource) Token() (*oauth2.Token, error) {
 	if err != nil {
 		return nil, fmt.Errorf("VaultToken:  Unable to parse enpiredTime: %v", err)
 	}
-	expireAt := time.Unix(i-3550, 0)
+	expireAt := time.Unix(i, 0)
 	ts.googleToken = &oauth2.Token{
 		AccessToken: accessToken,
 		Expiry:      expireAt,
