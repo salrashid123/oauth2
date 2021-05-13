@@ -189,7 +189,7 @@ func (ts *downScopedTokenSource) Token() (*oauth2.Token, error) {
 	ts.downScopedToken = &oauth2.Token{
 		AccessToken: tresp.AccessToken,
 		TokenType:   tresp.TokenType,
-		Expiry:      time.Now().Add(time.Duration(expiresIn)),
+		Expiry:      time.Now().Add(time.Duration(time.Duration(expiresIn) * time.Second)),
 	}
 
 	return ts.downScopedToken, nil
