@@ -31,9 +31,9 @@ type AvailabilityCondition struct {
 }
 
 type AccessBoundaryRule struct {
-	AvailableResource     string                `json:"availableResource"`
-	AvailablePermissions  []string              `json:"availablePermissions"`
-	AvailabilityCondition AvailabilityCondition `json:"availabilityCondition,omitempty"`
+	AvailableResource     string                 `json:"availableResource"`
+	AvailablePermissions  []string               `json:"availablePermissions"`
+	AvailabilityCondition *AvailabilityCondition `json:"availabilityCondition,omitempty"`
 }
 
 type DownScopedTokenConfig struct {
