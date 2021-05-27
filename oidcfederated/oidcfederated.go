@@ -35,7 +35,7 @@ type osTSOptions struct {
 }
 
 type OIDCFederatedTokenConfig struct {
-	SourceToken          string
+	SourceTokenSource    oauth2.TokenSource
 	Scope                string
 	TargetResource       string
 	TargetServiceAccount string
@@ -58,7 +58,7 @@ const (
 
 func OIDCFederatedTokenSource(tokenConfig *OIDCFederatedTokenConfig) (oauth2.TokenSource, error) {
 
-	if &tokenConfig.SourceToken == nil {
+	if &tokenConfig.SourceTokenSource == nil {
 		return nil, fmt.Errorf("oauth2/google: Source OIDC Token cannot be nil")
 	}
 
@@ -67,7 +67,7 @@ func OIDCFederatedTokenSource(tokenConfig *OIDCFederatedTokenConfig) (oauth2.Tok
 	}
 	return &oidcFederatedTokenSource{
 		refreshMutex:         &sync.Mutex{},
-		rootSource:           tokenConfig.SourceToken,
+		rootSource:           tokenConfig.SourceTokenSource,
 		scope:                tokenConfig.Scope,
 		targetResource:       tokenConfig.TargetResource,
 		targetServiceAccount: tokenConfig.TargetServiceAccount,
@@ -79,7 +79,7 @@ type oidcFederatedTokenSource struct {
 	refreshMutex         *sync.Mutex
 	scope                string
 	targetResource       string
-	rootSource           string
+	rootSource           oauth2.TokenSource
 	targetTokenSource    *oauth2.Token
 	targetServiceAccount string
 	useIAMToken          bool
@@ -89,10 +89,15 @@ func (ts *oidcFederatedTokenSource) Token() (*oauth2.Token, error) {
 	ts.refreshMutex.Lock()
 	defer ts.refreshMutex.Unlock()
 
+	tok, err := ts.rootSource.Token()
+	if err != nil {
+		return nil, fmt.Errorf("oauth2/google: unable to refresh root token %v", err)
+	}
+
 	if ts.targetTokenSource.Valid() {
 		return ts.targetTokenSource, nil
 	} else {
-		c, _, err := new(jwt.Parser).ParseUnverified(ts.rootSource, jwt.MapClaims{})
+		c, _, err := new(jwt.Parser).ParseUnverified(tok.AccessToken, jwt.MapClaims{})
 		if err != nil {
 			return nil, fmt.Errorf("input RootSource not JWT %v", err)
 		}
@@ -112,7 +117,7 @@ func (ts *oidcFederatedTokenSource) Token() (*oauth2.Token, error) {
 	form.Add("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
 	form.Add("requested_token_type", "urn:ietf:params:oauth:token-type:access_token")
 	form.Add("scope", ts.scope)
-	form.Add("subject_token", ts.rootSource)
+	form.Add("subject_token", tok.AccessToken)
 
 	gcpSTSResp, err := http.PostForm(GCP_OIDC_STS_ENDPOINT, form)
 	defer gcpSTSResp.Body.Close()

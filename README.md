@@ -550,7 +550,9 @@ func main() {
 
 	oTokenSource, err := sal.OIDCFederatedTokenSource(
 		&sal.OIDCFederatedTokenConfig{
-			SourceToken:          sourceToken,
+			SourceTokenSource: oauth2.StaticTokenSource(&oauth2.Token{
+				AccessToken: sourceToken,
+			}),
 			Scope:                scope,
 			TargetResource:       targetResource,
 			TargetServiceAccount: targetServiceAccount,
@@ -581,6 +583,64 @@ func main() {
 		panic(err)
 	}
 ```
+
+### Chained Credential usage. 
+
+Note, you can also chain tokensources together where one relies on another for refresh:
+
+In this,  we acquire the oidc federating token from some other source (eg, the exec provider)
+
+```bash
+export ENV_TOKEN="eyJHbGc..."
+go run main.go
+```
+
+where main.go:
+
+```golang
+
+import (
+	salext "github.com/salrashid123/oauth2/external"
+	sal "github.com/salrashid123/oauth2/oidcfederated"
+)
+
+
+	extTokenSource, err := salext.ExternalTokenSource(
+		&salext.ExternalTokenConfig{
+			Command: "/usr/bin/echo",
+			Env:     []string{},
+			Args:    []string{os.ExpandEnv("$ENV_TOKEN")},
+
+			Parser: func(b []byte) (salext.ExternalTokenResponse, error) {
+				ret := &salext.ExternalTokenResponse{
+					Token:     string(b),
+					ExpiresIn: 3600,
+					TokenType: "Bearer",
+				}
+				return *ret, nil
+			},
+		},
+	)
+
+	scope := "https://www.googleapis.com/auth/cloud-platform"
+	targetResource := "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/oidc-pool-1/providers/oidc-provider-1"
+	targetServiceAccount := "oidc-federated@mineral-minutia-820.iam.gserviceaccount.com"
+	gcpBucketName := "mineral-minutia-820-cab1"
+	gcpObjectName := "foo.txt"
+
+	oTokenSource, err := sal.OIDCFederatedTokenSource(
+		&sal.OIDCFederatedTokenConfig{
+			SourceTokenSource: extTokenSource,
+			Scope:                scope,
+			TargetResource:       targetResource,
+			TargetServiceAccount: targetServiceAccount,
+			UseIAMToken:          true,
+		},
+	)
+
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(oTokenSource))
+```
+
 ## Usage TpmTokenSource
 
 >> **WARNING:**  `TpmTokenSource` is highly experimental.  This repo is NOT supported by Google
