@@ -8,10 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"golang.org/x/oauth2/jws"
-	"google.golang.org/api/iamcredentials/v1"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -19,6 +15,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jws"
+	"google.golang.org/api/iamcredentials/v1"
 )
 
 // ImpersonatedTokenConfig prameters to start Credential impersonation exchange.
@@ -71,9 +72,6 @@ func ImpersonatedTokenSource(tokenConfig *ImpersonatedTokenConfig) (oauth2.Token
 
 	if tokenConfig.RootTokenSource == nil {
 		return nil, fmt.Errorf("oauth2/google: rootSource cannot be nil")
-	}
-	if tokenConfig.Lifetime > (3600 * time.Second) {
-		return nil, fmt.Errorf("oauth2/google: lifetime must be less than or equal to 3600 seconds")
 	}
 
 	return &impersonatedTokenSource{
