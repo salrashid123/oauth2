@@ -1267,6 +1267,14 @@ validate the rootToken secret, then returns back yet another Token that is wrapp
 new tokensrouce can be used in an arbitrary client...not necessarily for a Google service
 
 ```golang
+	// caCert, err := ioutil.ReadFile("google_root_ca.pem")
+	// caCertPool := x509.NewCertPool()
+	// caCertPool.AppendCertsFromPEM(caCert)
+
+	// tlsConfig := &tls.Config{
+	// 	ServerName: "server.domain.com",
+	// 	RootCAs:    caCertPool,
+	// }
 	client := &http.Client{}
 
 	rootTS, err := dummytokensource.NewDummyTokenSource(&testts.DummyTokenConfig{
@@ -1282,6 +1290,7 @@ new tokensrouce can be used in an arbitrary client...not necessarily for a Googl
 			SubjectTokenSource:      rootTS,
 			SubjectTokenType:        "urn:ietf:params:oauth:token-type:access_token",
 			RequestedTokenType:      "urn:ietf:params:oauth:token-type:access_token",
+			// TLSConfig:          *tlsConfig,
 		},
 	)
 

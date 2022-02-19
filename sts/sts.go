@@ -5,6 +5,7 @@
 package google
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -34,6 +35,7 @@ type STSTokenConfig struct {
 	SubjectTokenSource      oauth2.TokenSource
 	SubjectTokenType        string
 	RequestedTokenType      string
+	TLSConfig               tls.Config
 }
 
 const ()
@@ -61,6 +63,7 @@ func STSTokenSource(tokenConfig *STSTokenConfig) (oauth2.TokenSource, error) {
 
 		subjectTokenType:   tokenConfig.SubjectTokenType,
 		requestedTokenType: tokenConfig.RequestedTokenType,
+		tlsConfig:          &tokenConfig.TLSConfig,
 	}, nil
 }
 
@@ -74,6 +77,7 @@ type stsTokenSource struct {
 	subjectTokenSource oauth2.TokenSource
 	subjectTokenType   string
 	requestedTokenType string
+	tlsConfig          *tls.Config
 }
 
 func (ts *stsTokenSource) Token() (*oauth2.Token, error) {
@@ -98,7 +102,14 @@ func (ts *stsTokenSource) Token() (*oauth2.Token, error) {
 	form.Add("scope", ts.scope)
 	form.Add("subject_token", sourceTok.AccessToken)
 	// fmt.Println(string(e))
-	gcpSTSResp, err := http.PostForm(ts.tokenExchangeServiceURI, form)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: ts.tlsConfig,
+		},
+	}
+
+	gcpSTSResp, err := client.PostForm(ts.tokenExchangeServiceURI, form)
 	defer gcpSTSResp.Body.Close()
 	if err != nil {
 		return &oauth2.Token{}, fmt.Errorf("Error exchaning token for GCP STS %v", err)
