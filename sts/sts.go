@@ -5,7 +5,6 @@
 package google
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -35,16 +34,16 @@ type STSTokenConfig struct {
 	SubjectTokenSource      oauth2.TokenSource
 	SubjectTokenType        string
 	RequestedTokenType      string
-	TLSConfig               tls.Config
+	HTTPClient              *http.Client
 }
 
 const ()
 
 /*
-	STSTokenSource basically exchanges an arbitrary token (which maybe anything, any token, not necessarily google)
-	for another token through an intermediary STS server.
+STSTokenSource basically exchanges an arbitrary token (which maybe anything, any token, not necessarily google)
+for another token through an intermediary STS server.
 
-	You can find more
+You can find more
 */
 func STSTokenSource(tokenConfig *STSTokenConfig) (oauth2.TokenSource, error) {
 
@@ -63,7 +62,7 @@ func STSTokenSource(tokenConfig *STSTokenConfig) (oauth2.TokenSource, error) {
 
 		subjectTokenType:   tokenConfig.SubjectTokenType,
 		requestedTokenType: tokenConfig.RequestedTokenType,
-		tlsConfig:          &tokenConfig.TLSConfig,
+		httpClient:         tokenConfig.HTTPClient,
 	}, nil
 }
 
@@ -77,7 +76,7 @@ type stsTokenSource struct {
 	subjectTokenSource oauth2.TokenSource
 	subjectTokenType   string
 	requestedTokenType string
-	tlsConfig          *tls.Config
+	httpClient         *http.Client
 }
 
 func (ts *stsTokenSource) Token() (*oauth2.Token, error) {
@@ -103,11 +102,7 @@ func (ts *stsTokenSource) Token() (*oauth2.Token, error) {
 	form.Add("subject_token", sourceTok.AccessToken)
 	// fmt.Println(string(e))
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: ts.tlsConfig,
-		},
-	}
+	client := ts.httpClient
 
 	gcpSTSResp, err := client.PostForm(ts.tokenExchangeServiceURI, form)
 	defer gcpSTSResp.Body.Close()
