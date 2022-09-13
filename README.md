@@ -12,7 +12,7 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
 * **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
-* **STS**: `access_token` or `id_token` derived from interacting with an STS endpoint per [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
+* **STS**: `access_token` or `id_token` derived from interacting with an STS endpoint per [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html). 
 * **DummyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
 
 >> **Update 11/1/20** Refactored modules!!!!
@@ -35,7 +35,6 @@ import (
 	impersonate "github.com/salrashid123/oauth2/impersonate"
 	oidcfederated "github.com/salrashid123/oauth2/oidcfederated"
 	kms "github.com/salrashid123/oauth2/kms"
-	sts "github.com/salrashid123/oauth2/sts"	
 	tpm "github.com/salrashid123/oauth2/tpm"
 	vault "github.com/salrashid123/oauth2/vault"
 	
@@ -97,8 +96,10 @@ Other than providing `TokenSources` for GCP, most of the "key-based" sources can
 * [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
 
 **STS**
+*  **Deprecated** see [https://github.com/salrashid123/sts](https://github.com/salrashid123/sts)
 * [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
 * [STS Server](https://github.com/salrashid123/sts_server)
+
 
 > NOTE: This is NOT supported by Google
 
@@ -1254,53 +1255,7 @@ The distinct advantage of using this encapsulated within a `TokenSource` is that
 
 ## Usage STS
 
-To use this tokensource, you need to have any token you can echange with an STS server.  You'll also need an STS server.
-
-For a sample server, see:
-
-- [https://tools.ietf.org/html/rfc8693](https://tools.ietf.org/html/rfc8693)
-- [https://github.com/salrashid123/sts_server](https://github.com/salrashid123/sts_server)
-
-To use this, you need to bootstrap a TokenSource...In the example below, the root token is `rootTS` that includes
-some arbitrary value.  That token is sent to n STS server at `https://stsserver-6w42z6vi3q-uc.a.run.app/token` which
-validate the rootToken secret, then returns back yet another Token that is wrapped into a new TokenSource.  The
-new tokensrouce can be used in an arbitrary client...not necessarily for a Google service
-
-```golang
-	// caCert, err := ioutil.ReadFile("google_root_ca.pem")
-	// caCertPool := x509.NewCertPool()
-	// caCertPool.AppendCertsFromPEM(caCert)
-
-	// tlsConfig := &tls.Config{
-	// 	ServerName: "server.domain.com",
-	// 	RootCAs:    caCertPool,
-	// }
-	client := &http.Client{}
-
-	rootTS, err := dummytokensource.NewDummyTokenSource(&testts.DummyTokenConfig{
-		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
-		RotationIntervalSeconds: 10,
-	})
-	stsTokenSource, _ := sal.STSTokenSource(
-		&sal.STSTokenConfig{
-			TokenExchangeServiceURI: "https://stsserver-6w42z6vi3q-uc.a.run.app/token",
-			Resource:                "localhost",
-			Audience:                "localhost",
-			Scope:                   "https://www.googleapis.com/auth/cloud-platform",
-			SubjectTokenSource:      rootTS,
-			SubjectTokenType:        "urn:ietf:params:oauth:token-type:access_token",
-			RequestedTokenType:      "urn:ietf:params:oauth:token-type:access_token",
-			// HttpClient:          client,
-		},
-	)
-
-	client = oauth2.NewClient(context.TODO(), stsTokenSource)
-	resp, err := client.Get("http://localhost:8080/")
-	if err != nil {
-		log.Printf("Error creating client %v", err)
-		return
-	}
-```
+>> Deprecated, see [https://github.com/salrashid123/sts](https://github.com/salrashid123/sts)
 
 ## Usage DummyTokenSource
 
