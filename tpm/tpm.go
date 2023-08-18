@@ -132,7 +132,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 	} else {
 		kh = tpmutil.Handle(ts.tpmHandle)
 	}
-
+	defer tpm2.FlushContext(rwc, kh)
 	iat := time.Now()
 	exp := iat.Add(time.Hour)
 	msg := ""
