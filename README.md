@@ -3,16 +3,11 @@
 
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
-* **OIDC**:  a Google OpenID Connect token (OIDC) usable for Google Cloud Run, Cloud Functions, Identiy Aware Proxy. (_deprecated; see below_)
-* **Impersonated**: `access_token` that is impersonating another ServiceAccount. (_deprecated; see below_)
 * **AWS**: `access_token` for a Federated identity or GCP service account that is derived from AWSCredentials
 * **OIDC-Federated**: `access_token` for an arbitrary OIDC identity that is exchanged for a GCP Credential
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
 * **KMS**: `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
-* **Downscoped**: `access_token` that is derived from a provided parent `access_token` where the derived token has redued IAM permissions.
-* **External**: `access_token` or `id_token` derived from running an arbitrary external script or binary.
-* **STS**: `access_token` or `id_token` derived from interacting with an STS endpoint per [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html). 
 * **DummyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
 
 >> **Update 11/1/20** Refactored modules!!!!
@@ -29,46 +24,15 @@ After
 ```golang
 import (
 	aws "github.com/salrashid123/oauth2/aws"
-	downscoped "github.com/salrashid123/oauth2/downscoped"
-	external "github.com/salrashid123/oauth2/external"
-	idtoken "github.com/salrashid123/oauth2/idtoken"
-	impersonate "github.com/salrashid123/oauth2/impersonate"
 	oidcfederated "github.com/salrashid123/oauth2/oidcfederated"
 	kms "github.com/salrashid123/oauth2/kms"
 	tpm "github.com/salrashid123/oauth2/tpm"
-	vault "github.com/salrashid123/oauth2/vault"
-	
+	vault "github.com/salrashid123/oauth2/vault"	
 )
 
 ```
 
-* **Using Impersonated IdTokens or Impersonated Downscoped Credentials**: Combining and chaining credential types
 
-For OIDC, use this library to easily acquire Google OpenID Connect tokens for use against `Cloud Run`, `Cloud Functions`, `IAP`, `Endpoints` and other services.
-
-For Impersonated Credentials, you will use a source [oauth2/google/Credential](https://godoc.org/golang.org/x/oauth2/google#Credentials) object which as IAM permissions to assume another ServiceAccount and then finally perform operations as that account.
-
-For AWS based Credentials, you will exchange an AWS Credential for a Google Credential.
-
-For Federated OIDC based Credentials, you will exchange an arbitrary OIDC provicers Credential for a Google Credential.
-
-For TPM based Credentials, you will need to embed the ServiceAccount within a Trusted Platform Module.
-
-For KMS based Credentials, you can either embed the ServiceAccounts Private key within KMS or generate a Signing Key on KMS and then associate a service account with it.
-
-For Vault based Credentials, you need to first configure the a Vault policy that provides an  `access_token` for Google.
-
-For External or process based Credentials, you must have an external binary or script that the credential type can can execute.  The external process __must__ return JSON with an `access_token`
-
-For more information, see
-
-**OIDC**
-* [Authenticating using Google OpenID Connect Tokens](https://medium.com/google-cloud/authenticating-using-google-openid-connect-tokens-e7675051213b)
-  > deprecated
-
-**Impersonated**
-* [ImpersonatedCredentials](https://github.com/googleapis/google-api-go-client/issues/378)
-  > deprecated
 
 **AWS**
 * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
@@ -88,291 +52,12 @@ For more information, see
 * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
 * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
 
-**DownScoped**
-
-And as a complete sideshow: [YubiKey TokenSource](https://github.com/salrashid123/yubikey)
-
-Other than providing `TokenSources` for GCP, most of the "key-based" sources can also be used to sign or decrypt data or even establish TLS connections:
-* [crypto.Signer, crypto.Decrypter for TPM, KMS](https://github.com/salrashid123/signer)
-
-**STS**
-*  **Deprecated** see [https://github.com/salrashid123/sts](https://github.com/salrashid123/sts)
-* [https://www.rfc-editor.org/rfc/rfc8693.html](https://www.rfc-editor.org/rfc/rfc8693.html)
-* [STS Server](https://github.com/salrashid123/sts_server)
 
 
 > NOTE: This is NOT supported by Google
 
 
-**External**
 
-This credential type allows for a flexible source for a GCP TokenSource.  You get to define how you acquire an access or id_token and incorporate that logic inside the binary that gets executed.  This credential type is inspired by:
-* [Kubernetes ExecConfig](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#configuration)
-* [AWS Process Credentials](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sourcing-external.html)
-
-## Usage IDToken
-
->> **UPDATE 5/10/20**  use `google.golang.org/api/idtoken` instead of this library
-
-```golang
-package main
-
-import (
-	"context"
-	"io/ioutil"
-	"log"
-	"net/http"
-
-	"google.golang.org/api/idtoken"
-)
-
-const ()
-
-
-func main() {
-
-	aud := "https://myapp-6w42z6vi3q-uc.a.run.app"
-	url := "https://httpbin.org/get"
-	jsonCert := "/path/to/svc.json"
-
-	ctx := context.Background()
-
-	ts, err := idtoken.NewTokenSource(ctx, aud, idtoken.WithCredentialsFile(jsonCert))
-	if err != nil {
-		log.Fatalf("unable to create TokenSource: %v", err)
-	}
-	tok, err := ts.Token()
-	if err != nil {
-		log.Fatalf("unable to retrieve Token: %v", err)
-	}
-	log.Printf("IDToken: %s", tok.AccessToken)
-	validTok, err := idtoken.Validate(ctx, tok.AccessToken, aud)
-	if err != nil {
-		log.Fatalf("token validation failed: %v", err)
-	}
-	if validTok.Audience != aud {
-		log.Fatalf("got %q, want %q", validTok.Audience, aud)
-	}
-
-	client, err := idtoken.NewClient(ctx, aud, idtoken.WithCredentialsFile(jsonCert))
-
-	if err != nil {
-		log.Fatalf("Could not generate NewClient: %v", err)
-	}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		log.Fatalf("Error Creating HTTP Request: %v", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalf("Error making authenticated call: %v", err)
-	}
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Error Reading response body: %v", err)
-	}
-	bodyString := string(bodyBytes)
-	log.Printf("Authenticated Response: %v", bodyString)
-
-}
-```
-
-for gRPC:
-```golang
-	idTokenSource, err := idtoken.NewTokenSource(ctx, *targetAudience, idtoken.WithCredentialsFile(*serviceAccount))
-	if err != nil {
-		log.Fatalf("unable to create TokenSource: %v", err)
-	}
-	tok, err := idTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("IdToken %s", tok)
-
-	var conn *grpc.ClientConn
-
-	conn, err = grpc.Dial(*address,
-
-		grpc.WithPerRPCCredentials(grpcTokenSource{
-			TokenSource: oauth.TokenSource{
-				idTokenSource,
-			},
-		}),
-	)
-```
-
-Use 
-
-Anyway, I'm leaving the following in for reference:
-
-```golang
-import (
-	sal "github.com/salrashid123/oauth2/idtoken"
-)
-
-idTokenSource, err := sal.IdTokenSource(
-	&sal.IdTokenConfig{
-		Credentials: creds,
-		Audiences:   []string{targetAudience},
-	},
-)
-```
-
-## Usage ImpersonatedCredentials
-
->> ** UPDATE 9/29/20 ** : googlel.golang.org/api/options supports impersonated credentials directly against GCP APIs so there isn't a reason to use the `ImpersonatedCredentials` provided by this repo
-
-
-- [https://pkg.go.dev/google.golang.org/api/option#ImpersonateCredentials](https://pkg.go.dev/google.golang.org/api/option#ImpersonateCredentials)
-
-
-To acquire a raw `access_token` use:
-
-```golang
-package main
-
-import (
-    "context"
-    "log"
-
-    "google.golang.org/api/option"
-    "google.golang.org/api/transport"
-)
-
-func main() {
-
-    ctx := context.Background()
-    creds, err := transport.Creds(ctx,
-        option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
-        //option.WithCredentialsFile("/path/to/svc.json"),
-        option.ImpersonateCredentials("impersonated-account@fabled-ray-104117.iam.gserviceaccount.com"))
-    if err != nil {
-        log.Fatalf("%v", err)
-    }
-    ts := creds.TokenSource
-
-    tok, err := ts.Token()
-    if err != nil {
-        log.Fatalf("%v", err)
-    }
-    log.Printf("access_token %v", tok.AccessToken)
-
-}
-```
-
----
-
-The section below for `ImpersonatedCredentials` is deprecated!!!  use the bit above please
-
-ImpersonatedCredential is experimental (you'll only find it in this repo for now).  `Impersonated Credentials` allows one service account or user to impersonate another service account.  This API already exits in `google-auth-python` and `google-auth-java`
-
-
-- Please see 
-  - [issue#378](https://github.com/googleapis/google-api-go-client/issues/378)
-  - [gcloud --impersonate-service-account](https://cloud.google.com/sdk/gcloud/reference/#--impersonate-service-account)
-  - [google-auth-python](https://google-auth.readthedocs.io/en/latest/reference/google.auth.impersonated_credentials.html)
-  - [google-auth-java](https://github.com/googleapis/google-auth-library-java/blob/master/oauth2_http/java/com/google/auth/oauth2/ImpersonatedCredentials.java)
-  - [Terraform “Assume Role” and service Account impersonation on Google Cloud](https://medium.com/google-cloud/terraform-assume-role-and-service-account-impersonation-on-google-cloud-ffc553863e72)
-
-To use this credential type, you must allow the source credential the `iam/ServiceAccountTokenCreator` role on the target service account.  From there, you bootstrap the source, then the target and finally use the target in a google cloud api.
-
-There are two modes to using impersonated credentials which based on what apis you intent to invoke:
-
-1. Google Cloud APIS. 
-2. Gsuites AdminSDK APIs
-
-You will most likely use this library for GCP apis but if you intend to call Gsuites, the token will eed to utilize [Domain-wide Delegation](https://developers.google.com/admin-sdk/directory/v1/guides/delegation).
-
-### Impersonated with GCP APIs
-
-To use this mode, do not specify the `Subject` field in `ImpersonatedTokenSource` struct.  The resulting tokensource can be used directly in a google cloud client library
-
-```golang
-targetPrincipal := "impersonated-account@fabled-ray-104117.iam.gserviceaccount.com"
-lifetime := 30 * time.Second
-delegates := []string{}
-targetScopes := []string{"https://www.googleapis.com/auth/devstorage.read_only",
-	"https://www.googleapis.com/auth/cloud-platform"}
-rootTokenSource, err := google.DefaultTokenSource(ctx,
-	"https://www.googleapis.com/auth/iam")
-if err != nil {
-	log.Fatal(err)
-}
-tokenSource, err := sal.ImpersonatedTokenSource(
-	&sal.ImpersonatedTokenConfig{
-		RootTokenSource: rootTokenSource,
-		TargetPrincipal: targetPrincipal,
-		Lifetime:        lifetime,
-		Delegates:       delegates,
-		TargetScopes:    targetScopes,
-	},
-)
-if err != nil {
-	log.Fatal(err)
-}
-
-// Since we just have a tokensource here, we need to add that into a Credential for later use
-creds := &google.Credentials{
-	TokenSource: tokenSource,
-}
-```
-
-### Impersonated Credentials with Domain Wide Delegation
-
-Specify the `Subject` field to enable Domain-Wide Delegation
-
-```golang
-package main
-
-import (
-	sal "github.com/salrashid123/oauth2/impersonate"
-	admin "google.golang.org/api/admin/directory/v1"
-)
-
-var (
-	serviceAccountFile = "/path/to/svc.json"
-	domain  = "yurdomain.com"
-	cx      = "yourGsuitesCustomerID"
-	subject = "admin@yourdomain.com"
-)
-
-func main() {
-	ctx := context.Background()
-	data, err := ioutil.ReadFile(serviceAccountFile)
-	creds, err := google.CredentialsFromJSON(ctx, data, "https://www.googleapis.com/auth/cloud-platform")
-	rootTokenSource := creds.TokenSource
-	// rootTokenSource, err := google.DefaultTokenSource(ctx,"https://www.googleapis.com/auth/iam")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	targetPrincipal := "domainadminsvc@project.iam.gserviceaccount.com"
-	lifetime := 30 * time.Second
-	delegates := []string{}
-	targetScopes := []string{admin.AdminDirectoryUserScope, admin.AdminDirectoryGroupScope}
-
-	tokenSource, err := sal.ImpersonatedTokenSource(
-		&sal.ImpersonatedTokenConfig{
-			RootTokenSource: rootTokenSource,
-			TargetPrincipal: targetPrincipal,
-			Lifetime:        lifetime,
-			Delegates:       delegates,
-			TargetScopes:    targetScopes,
-			Subject:         subject, // Spdcify the subjec for domain-wide-delegation
-		},
-	)
-	adminClient := oauth2.NewClient(ctx, tokenSource)
-	adminService, err := admin.New(adminClient)
-
-	usersReport, err := adminService.Users.List().Customer(cx).MaxResults(10).OrderBy("email").Do()
-	if err != nil {
-		log.Fatal(err)
-	}
-  ...
-  ...
-}
-```
 ---
 
 ## Usage AWS
@@ -643,6 +328,9 @@ import (
 ```
 
 ## Usage TpmTokenSource
+
+
+for a simple end-to-end, see [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
 
 >> **WARNING:**  `TpmTokenSource` is highly experimental.  This repo is NOT supported by Google
 
@@ -1056,206 +744,6 @@ Finally, in a golang client, you can initialize it by specifying the `VAULT_TOKE
 	)
 ```
 
-## Usage DownScoped
-
-Downscoped credentials allows for exchanging a parent Credential's `access_token` for another `access_token` that has permissions on a limited set of resoruces the parent token originally had.
-
-For example, if the root Credential that represents Alice has access to GCS buckets A, B, C, you can exchange the Alice's credential for another  credential that still identifies Alice but can only be used against Bucket A.
-
->> Downscoped tokens currently only works for certain GCP resources like GCS resources
-
-For more information, see [https://github.com/salrashid123/downscoped_token](https://github.com/salrashid123/downscoped_token)
-
-The following shows how to exchange a root credential for a downscoped credential that can only be used as `roles/storage.objectViewer` against GCS bucket `bucketName`.   Downscoped tokens are normally used in a tokenbroker/exchange service where you can mint a new restricted token to hand to a client.  The sample below shows how to generate a downscoped token, extract the raw `access_token`, and then inject the raw token in another `TokenSource` (instead of just using the DownScopedToken as the tokensource directly in the storageClient.).
-
-Note the `AvailabilityCondition`:  this parameter lets you define fine-grained controls such as specific resources like GCS objects the downscoped token has permissions over.
-
-```golang
-package main
-
-import (
-	"context"
-	"log"
-
-	"cloud.google.com/go/storage"
-	sal "github.com/salrashid123/oauth2/downscoped"
-	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
-
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-)
-
-var (
-	projectID  = "your_project"
-	bucketName = "your_bucket"
-)
-
-func main() {
-
-	ctx := context.Background()
-
-	rootTokenSource, err := google.DefaultTokenSource(ctx,
-		"https://www.googleapis.com/auth/iam")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	downScopedTokenSource, err := sal.DownScopedTokenSource(
-		&sal.DownScopedTokenConfig{
-			RootTokenSource: rootTokenSource,
-			DownscopedOptions: sal.DownscopedOptions{
-				AccessBoundary: sal.AccessBoundary{
-					AccessBoundaryRules: []sal.AccessBoundaryRule{
-						sal.AccessBoundaryRule{
-							AvailableResource: "//storage.googleapis.com/projects/_/buckets/" + bucketName,
-							AvailablePermissions: []string{
-								"inRole:roles/storage.objectViewer",
-							},
-							AvailabilityCondition: sal.AvailabilityCondition{
-								Title:      "obj-prefixes",
-								Expression: "resource.name.startsWith(\"projects/_/buckets/your_bucket/objects/foo.txt\")",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	// You can use the downscopeToken in the storage client below...but realistically,
-	// you would generate a rootToken, downscope it and then provide the new token to another client
-	// to use...similar to the bit below where the token itself is used to setup a StaticTokenSource
-	tok, err := downScopedTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Downscoped Token: %s", tok.AccessToken)
-
-	sts := oauth2.StaticTokenSource(tok)
-
-	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(sts))
-	if err != nil {
-		log.Fatalf("Could not create storage Client: %v", err)
-	}
-
-	bkt := storageClient.Bucket(bucketName)
-	obj := bkt.Object("foo.txt")
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer r.Close()
-	if _, err := io.Copy(os.Stdout, r); err != nil {
-		panic(err)
-	}
-
-}
-```
-
-## Usage External
-
-External Credentials leaves the action of acquiring an `access_token` or `id_token` up to an external binary or script that gets called.  By **default**, binary MUST return json with the token and optionally its type "Bearer" and the number of seconds the token will expire in.  
-
-This credential type will simply call that as a subprocess and unmarshall the response json and extract the `Token`.  How the binary gets the token once invoked is left undefined (its upto you).
-
-For example, you can use this in a number of ways by sourcing from environment variables, files or even remote api calls...they will all work as long as the response inclues the JSON struct:
-
-```golang
-type externalTokenResponse struct {
-	Token     string `json:"token"`
-	TokenType string `json:"token_type,omitempty"`
-	ExpiresIn int    `json:"expires_in,omitempty"`
-}
-```
-
-If the external script or binary honors this request, the usage is like
-
-```golang
-    // env-var usage
-	extTokenSource, err := sal.ExternalTokenSource(
-		&sal.ExternalTokenConfig{
-			Command: "/usr/bin/echo",
-			Env:     []string{"foo=bar"},
-			Args: []string{os.ExpandEnv("$ENV_TOKEN")},
-		},
-	)
-
-    // file
-	extTokenSource, err := sal.ExternalTokenSource(
-		&sal.ExternalTokenConfig{
-			Command: "/usr/bin/cat",
-			Env:     []string{"foo=bar"},
-			Args:    []string{"file_token.json"},
-		},
-	)
-
-    // external
-	extTokenSource, err := sal.ExternalTokenSource(
-		&sal.ExternalTokenConfig{
-			Command: "/usr/bin/curl",
-			Env:     []string{"foo=bar"},
-			Args:    []string{"-s", "https://gist.githubusercontent.com/salrashid123/8a8778aaa5743458b819245def9f8192/raw/bba367db1d18cbd6a99dca3c877d669498e5f742/exec.json"},
-		},
-	)
-
-	// with parser
-	extTokenSource, err := sal.ExternalTokenSource(
-		&sal.ExternalTokenConfig{
-			Command: "gcloud",
-			Env:     []string{"foo=bar"},
-			Args:    []string{"auth", "print-access-token"},
-			Parser: func(b []byte) (sal.ExternalTokenResponse, error) {
-				ret := &sal.ExternalTokenResponse{
-					Token:     string(b),
-					ExpiresIn: 3600,
-					TokenType: "Bearer",
-				}
-				return *ret, nil
-			},
-		},
-	)	
-	// or.. kerberos, certificate, saml, etc
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// then..
-	tok, err := extTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("External Token: %s\n", tok.AccessToken)
-	fmt.Printf("Token Valid: %t\n", tok.Valid())
-```
-
-You can also apply a custom parser such that arbitrary responses can also be used.  For example, if the subprocess command returns a plain text string with just the access token (eg `gcloud auth print-access-token`), you can "just use" that token directly by specifying a Parser to handle the response.  In the example below, gcloud command returns a plain text string and not a JSON so a Parser will need to read the value as a string `Token:     string(b),` and set some default values
-
-```golang
-	extTokenSource, err := sal.ExternalTokenSource(
-		&sal.ExternalTokenConfig{
-			Command: "gcloud",
-			Env:     []string{"foo=bar"},
-			Args:    []string{"auth", "print-access-token"},
-			Parser: func(b []byte) (sal.ExternalTokenResponse, error) {
-				ret := &sal.ExternalTokenResponse{
-					Token:     string(b),
-					ExpiresIn: 3600,
-					TokenType: "Bearer",
-				}
-				return *ret, nil
-			},
-		},
-	)
-```
-
-The distinct advantage of using this encapsulated within a `TokenSource` is that the refresh and management all happens within the context of the caller.  That is, you could use the 'file based' token source by reading it in directly, then manually making a TokenSource and then using that TokenSource within a GCP library like Cloud Storage.  However, when that static token expires, it is irrecoverable and the GCS client will fail even if a "new file with a new token" is available.  In contrast, if it is included within a TokenSource like this, the refresh is managed internally and the calling api library (eg, GCS) would not throw any exceptions.
-
-
-## Usage STS
-
->> Deprecated, see [https://github.com/salrashid123/sts](https://github.com/salrashid123/sts)
 
 ## Usage DummyTokenSource
 
@@ -1271,16 +759,6 @@ import (
 		RotationIntervalSeconds: 10,
 	})
 ```
-
-## Using Impersonated IdTokens or Impersonated Downscoped Credentials
-
-You can also mix and match several credential types together in a chain by applying one credential as a source to another.
-
-For example, to chain
-
-* [doens not work anymore :(  Impersonated Credentials --> ID Token, see [impersonated->idtoken](https://gist.github.com/salrashid123/fd3236d7405748120089d2c93f71faac)
-* Impersonated Credentials --> Downscope, see [impersonated->downscoped](https://gist.github.com/salrashid123/c894e3029be76243761709cf834c7ed1)
-
 
 ### Usage YubiKeyTokenSource
 
