@@ -465,13 +465,19 @@ $ gcloud iam service-accounts keys list --iam-account=YOUR_SERVICE_ACCOUNT@$PROJ
 		7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
 ```
 
+also see
+
+- [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
+
 C) Remotely transferring the 
 
 If you already have a list of EKCerts you know for sure trust and want to distribute keys to, then its pretty easy:  just use `client.ImportSigningKey()` api from `go-tpm-tools` to seal data to an EK, then transmit the encrypted key to each VM.
 
 Each VM will then load it into non-volatile area of the TPM and you can use it to sign as much as you want.
 
-for detaled walkthrough of that, see [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
+for detaled walkthrough of that, see 
+
+[Importing ServiceAccount Credentials to TPMs](https://gist.github.com/salrashid123/9e4a0328fd8c84374ace78c76a1e34cb)
 
 note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
