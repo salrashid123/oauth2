@@ -67,7 +67,7 @@ type rtokenJSON struct {
 //	UseOauthToken (bool): Use oauth2 access_token (true) or JWTAccessToken (false)
 func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
-	if tokenConfig.TpmHandle != 0 {
+	if tokenConfig.TpmHandle == 0 {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: either TPMTokenConfig.TpmHandle must be specified")
 	}
 
