@@ -334,22 +334,11 @@ for a simple end-to-end, see [Trusted Platform Module (TPM) based GCP Service Ac
 
 >> **WARNING:**  `TpmTokenSource` is experimental.  This repo is NOT supported by Google
 
-> Note that this implementation currently only supports _persistent handles_ and does not read a key though individual loading of parent-child keys.
-
 
 There are two types of tokens this TokenSource fulfills:
 
 - `JWTAccessToken`
 - `Oauth2 access_tokens`.
-
-
-JWTAccessToken is a custom variation of the standard oauth2 access token that is works with just a certain subset of GCP apis.  What JWTAccessTokens do is locally sign a JWT and send that directly to GCP instead of the the normal oauth2 flows where the local signed token is exchanged for yet another `access_token`.  The flow where the the exchange for a local signed JWT for an access_token is the normal oauth2 flow.  If you use any of the services described [here](https://github.com/googleapis/googleapis/tree/master/google) (eg, PubSub), use JWTAccessToken.  If you use any other serivce (eg GCS), use oauth2.   JWTAccessTokens are enabled by default.  To enable oauth2access tokens, set `UseOauthToken: true`.
-
-For more information, see: [Faster ServiceAccount authentication for Google Cloud Platform APIs](https://medium.com/google-cloud/faster-serviceaccount-authentication-for-google-cloud-platform-apis-f1355abc14b2).
-
-This token source is a variation of `google/oauth2/JWTAccessTokenSourceFromJSON` where the private key used to sign the JWT is embedded within a [Trusted Platform Module](https://en.wikipedia.org/wiki/Trusted_Platform_Module) (`TPM`).
-
-The private key in raw form _not_ exposed to the filesystem or any process other than through the TPM interface.  This token source uses the TPM interface to `sign` the JWT which is then used to access a Google Cloud API.  
 
 
 ### Usage
