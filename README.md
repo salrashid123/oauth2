@@ -433,10 +433,13 @@ Google Cloud uses the `x509` format of a key to import.  So far all we've create
 Remember to modify certgen.go and configure/enable the TPM Credential mode
 
 ```golang
+    rwc, err := tpm2.OpenTPM(*tpmPath)
+	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
 	r, err := saltpm.NewTPMCrypto(&saltpm.TPM{
-		TpmDevice: "/dev/tpm0",
-		TpmHandle: 0x81010002,
+		TpmDevice: rwc,
+		Key:       k,
 	})
+
 ```
 
 Once you run certgen.go the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
@@ -511,6 +514,9 @@ note, there are also several ways to securely transfer public/private keys betwe
 	)
 
 	var (
+			tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
+
 		projectId           = "your_project"
 		bucketName          = "your_bucket"
 		serviceAccountEmail = "your_service_account@your_project.iam.gserviceaccount.com"
@@ -518,11 +524,46 @@ note, there are also several ways to securely transfer public/private keys betwe
 	)
 
 	func main() {
+
+	flag.Parse()
+
+	rwc, err := tpm2.OpenTPM(*tpmPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can't open TPM %s: %v", *tpmPath, err)
+		return
+	}
+	defer rwc.Close()
+
+	totalHandles := 0
+	for _, handleType := range handleNames[*flush] {
+		handles, err := client.Handles(rwc, handleType)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error getting handles", *tpmPath, err)
+			os.Exit(1)
+		}
+		for _, handle := range handles {
+			if err = tpm2.FlushContext(rwc, handle); err != nil {
+				fmt.Fprintf(os.Stderr, "Error flushing handle 0x%x: %v\n", handle, err)
+				os.Exit(1)
+			}
+			fmt.Printf("Handle 0x%x flushed\n", handle)
+			totalHandles++
+		}
+	}
+
+		k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error closing tpm%v\n", err)
+		os.Exit(1)
+	}
+
+
 		ts, err := sal.TpmTokenSource(
 			&sal.TpmTokenConfig{
-				Tpm:           "/dev/tpm0",
 				Email:         serviceAccountEmail,
-				TpmHandle:     0x81010002,
+				TPMDevice      rwc
+				Key            k,
 				Audience:      "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
 				KeyId:         keyId,
 				UseOauthToken: false,
@@ -595,9 +636,6 @@ note, there are also several ways to securely transfer public/private keys betwe
 
 	```
 
-* TODO, to fix:
-* `/dev/tpm0` concurrency from multiple clients.
-* Provide example PCR values and policy access.
 
 ---
 
