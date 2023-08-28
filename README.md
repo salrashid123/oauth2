@@ -496,34 +496,50 @@ note, there are also several ways to securely transfer public/private keys betwe
 	The TPM based `TokenSource` can now be used to access a GCP resource using either a plain HTTPClient or _native_ GCP library (`google-cloud-pubsub`)!!
 
 	```golang
-	package main
+package main
 
-	import (
-		"context"
-		"fmt"
-		"log"
-		"net/http"
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"os"
 
-		"cloud.google.com/go/storage"
+	"cloud.google.com/go/storage"
+	"github.com/google/go-tpm-tools/client"
+	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/tpmutil"
+	sal "github.com/salrashid123/oauth2/tpm"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+)
 
-		"cloud.google.com/go/pubsub"
-		sal "github.com/salrashid123/oauth2/tpm"
-		"golang.org/x/oauth2"
-		"google.golang.org/api/iterator"
-		"google.golang.org/api/option"
-	)
-
-	var (
-			tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+var (
+	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
 	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
 
-		projectId           = "your_project"
-		bucketName          = "your_bucket"
-		serviceAccountEmail = "your_service_account@your_project.iam.gserviceaccount.com"
-		keyId               = "your_key_id"
-	)
+	projectId           = flag.String("projectId", "core-eso", "ProjectID")
+	serviceAccountEmail = flag.String("serviceAccountEmail", "tpm-sa@core-eso.iam.gserviceaccount.com", "Email of the serviceaccount")
+	bucketName          = flag.String("bucketName", "core-eso-bucket", "Bucket name")
+	keyId               = flag.String("keyId", "71b831d149e4667809644840cda2e7e0080035d5", "GCP PRivate key id assigned.")
 
-	func main() {
+	flush       = flag.Bool("flush", false, "flushHandles")
+	handleNames = map[string][]tpm2.HandleType{
+		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
+		"loaded":    {tpm2.HandleTypeLoadedSession},
+		"saved":     {tpm2.HandleTypeSavedSession},
+		"transient": {tpm2.HandleTypeTransient},
+		"none":      {},
+	}
+)
+
+/*
+	 go run main.go --projectId=core-eso \
+	   --persistentHandle=0x81008000 \
+	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \
+		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
+*/
+func main() {
 
 	flag.Parse()
 
@@ -534,105 +550,66 @@ note, there are also several ways to securely transfer public/private keys betwe
 	}
 	defer rwc.Close()
 
-	totalHandles := 0
-	for _, handleType := range handleNames[*flush] {
-		handles, err := client.Handles(rwc, handleType)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting handles", *tpmPath, err)
-			os.Exit(1)
-		}
-		for _, handle := range handles {
-			if err = tpm2.FlushContext(rwc, handle); err != nil {
-				fmt.Fprintf(os.Stderr, "Error flushing handle 0x%x: %v\n", handle, err)
+	if *flush {
+		totalHandles := 0
+		for _, handleType := range handleNames["all"] {
+			handles, err := client.Handles(rwc, handleType)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error getting handles", *tpmPath, err)
 				os.Exit(1)
 			}
-			fmt.Printf("Handle 0x%x flushed\n", handle)
-			totalHandles++
+			for _, handle := range handles {
+				if err = tpm2.FlushContext(rwc, handle); err != nil {
+					fmt.Fprintf(os.Stderr, "Error flushing handle 0x%x: %v\n", handle, err)
+					os.Exit(1)
+				}
+				fmt.Printf("Handle 0x%x flushed\n", handle)
+				totalHandles++
+			}
 		}
 	}
-
-		k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
+	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error closing tpm%v\n", err)
 		os.Exit(1)
 	}
 
+	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMDevice: rwc,
+		Key:       k,
+		Email:     *serviceAccountEmail,
+		//KeyId:         *keyId,
+		UseOauthToken: true,
+	})
 
-		ts, err := sal.TpmTokenSource(
-			&sal.TpmTokenConfig{
-				Email:         serviceAccountEmail,
-				TPMDevice      rwc
-				Key            k,
-				Audience:      "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
-				KeyId:         keyId,
-				UseOauthToken: false,
-			},
-		)
-
-		// tok, err := kmsTokenSource.Token()
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-		// //log.Printf("Token: %v", tok.AccessToken)
-
-		tok, err := ts.Token()
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Token: %v", tok.AccessToken)
-		client := &http.Client{
-			Transport: &oauth2.Transport{
-				Source: ts,
-			},
-		}
-
-		ctx := context.Background()
-
-		url := fmt.Sprintf("https://pubsub.googleapis.com/v1/projects/%s/topics", projectId)
-		resp, err := client.Get(url)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Response: %v", resp.Status)
-
-		// Using google-cloud library
-
-		pubsubClient, err := pubsub.NewClient(ctx, projectId, option.WithTokenSource(ts))
-		if err != nil {
-			log.Fatalf("Could not create pubsub Client: %v", err)
-		}
-
-		it := pubsubClient.Topics(ctx)
-		for {
-			topic, err := it.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.Fatalf("Unable to iterate topics %v", err)
-			}
-			log.Printf("Topic: %s", topic.ID())
-		}
-
-		// GCS does not support JWTAccessTokens, the following will only work if UseOauthToken is set to True
-		storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
-		if err != nil {
-			log.Fatal(err)
-		}
-		sit := storageClient.Buckets(ctx, projectId)
-		for {
-			battrs, err := sit.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Printf(battrs.Name)
-		}
-
+	tok, err := ts.Token()
+	if err != nil {
+		log.Fatal(err)
 	}
+	log.Printf("Token: %v", tok.AccessToken)
+
+	ctx := context.Background()
+
+	// GCS does not support JWTAccessTokens, the following will only work if UseOauthToken is set to True
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		log.Fatal(err)
+	}
+	sit := storageClient.Buckets(ctx, *projectId)
+	for {
+		battrs, err := sit.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf(battrs.Name)
+	}
+
+}
+
 
 	```
 
