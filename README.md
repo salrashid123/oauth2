@@ -502,7 +502,7 @@ note, there are also several ways to securely transfer public/private keys betwe
 		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
 ```
 
-	```golang
+```golang
 package main
 
 import (
@@ -611,9 +611,8 @@ func main() {
 	}
 
 }
-
-
-	```
+	
+```
 
 
 ---
