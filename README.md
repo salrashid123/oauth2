@@ -495,6 +495,13 @@ note, there are also several ways to securely transfer public/private keys betwe
 
 	The TPM based `TokenSource` can now be used to access a GCP resource using either a plain HTTPClient or _native_ GCP library (`google-cloud-pubsub`)!!
 
+```
+	 go run main.go --projectId=core-eso \
+	   --persistentHandle=0x81008000 \
+	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \
+		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
+```
+
 	```golang
 package main
 
@@ -533,12 +540,7 @@ var (
 	}
 )
 
-/*
-	 go run main.go --projectId=core-eso \
-	   --persistentHandle=0x81008000 \
-	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \
-		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
-*/
+
 func main() {
 
 	flag.Parse()
