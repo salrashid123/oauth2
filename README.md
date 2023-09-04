@@ -374,11 +374,11 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
    There are several ways to do this:  either install and use `tpm2_tools` or use `go-tpm`.  
 
    The following will load the RSA key and make it persistent at a specific handle 
-   (see page 15 [Registry of Reserved TPM 2.0 Handles and Localities](https://trustedcomputinggroup.org/wp-content/uploads/RegistryOfReservedTPM2HandlesAndLocalities_v1p1_pub.pdf)))
-
+ 
    Using `go-tpm` is easier and I've setup a small app to import a service account key:
 
-    a) Run the following utility function which does the same steps as `tpm2_tools` but uses [go-tpm](https://github.com/google/go-tpm).
+    a) Run the following utility function which does the same steps as `tpm2_tools` steps below
+   
      - [Importing an external key and load it ot the TPM]([https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/tree/master/tpm_import_external_rsa))
   
     b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
@@ -387,7 +387,7 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 
 ```bash
 	tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
-	tpm2_import -C primary.ctx -G rsa -i private.pem -u key.pub -r key.prv
+	tpm2_import -C primary.ctx -G rsa -i /tmp/key_rsa.pem -u key.pub -r key.prv
 	tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 ```
 
