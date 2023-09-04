@@ -350,11 +350,11 @@ There are two types of tokens this TokenSource fulfills:
 
 You can 
 
-* 1) download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
+* A) download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
 or
-* 2) Generate a Key _ON THE TPM_ and then import the public part to GCP.
+* B) Generate a Key _ON THE TPM_ and then import the public part to GCP.
 or
-* 3) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
+* C) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
 
 
 #### A) Import Service Account json to TPM:
@@ -458,11 +458,7 @@ $ gcloud iam service-accounts keys list --iam-account=YOUR_SERVICE_ACCOUNT@$PROJ
 		7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
 ```
 
-also see
-
-- [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
-
-C) Remotely transferring the 
+#### C)  Remotely transferring an encrypted RSA key into the TPM 
 
 If you already have a list of EKCerts you know for sure trust and want to distribute keys to, then its pretty easy:  just use `client.ImportSigningKey()` api from `go-tpm-tools` to seal data to an EK, then transmit the encrypted key to each VM.
 
