@@ -350,22 +350,23 @@ There are two types of tokens this TokenSource fulfills:
 
 You can 
 
-* 1) download a Google ServiceAccount's `.p12` file  and embed the private part to the TPM 
+* 1) download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
 or
 * 2) Generate a Key _ON THE TPM_ and then import the public part to GCP.
 or
 * 3) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
 
 
-#### A) Import Service Account .p12 to TPM:
+#### A) Import Service Account json to TPM:
 
-1) Download Service account .p12 file
+1) Download Service account json file
 
 2) Extract public/private keypair
 
 ```bash
-    openssl pkcs12 -in svc_account.p12  -nocerts -nodes -passin pass:notasecret | openssl rsa -out private.pem
-    openssl rsa -in private.pem -outform PEM -pubout -out public.pem
+    cat svc-account.json | jq -r '.private_key'
+	openssl rsa -out /tmp/key_rsa.pem -traditional -in /tmp/f.json
+    openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 ```
 
 3) Embed the key into a TPM
