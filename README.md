@@ -379,7 +379,7 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 
     a) Run the following utility function which does the same steps as `tpm2_tools` steps below
    
-     - [Importing an external key and load it ot the TPM]([https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/tree/master/tpm_import_external_rsa))
+     - [Importing an external key and load it ot the TPM](https://github.com/salrashid123/tpm2/tree/master/tpm_import_external_rsa)
   
     b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
 
@@ -457,6 +457,8 @@ $ gcloud iam service-accounts keys list --iam-account=YOUR_SERVICE_ACCOUNT@$PROJ
 		9bd21535c9985ad922c1cf6bb3dbceef0f7375d6  2019-11-28T00:49:55Z  2020-11-27T00:49:55Z <<<<<<< note, this is the pubic cert for the TPM  based key!!
 		7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
 ```
+
+Detailed end-to-end steps also detailed [here](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
 
 #### C)  Remotely transferring an encrypted RSA key into the TPM 
 
