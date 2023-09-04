@@ -364,9 +364,9 @@ or
 2) Extract public/private keypair
 
 ```bash
-    cat svc-account.json | jq -r '.private_key'
-	openssl rsa -out /tmp/key_rsa.pem -traditional -in /tmp/f.json
-    openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
+cat svc-account.json | jq -r '.private_key' > /tmp/f.json
+openssl rsa -out /tmp/key_rsa.pem -traditional -in /tmp/f.json
+openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 ```
 
 3) Embed the key into a TPM
@@ -379,7 +379,7 @@ or
    Using `go-tpm` is easier and I've setup a small app to import a service account key:
 
     a) Run the following utility function which does the same steps as `tpm2_tools` but uses [go-tpm](https://github.com/google/go-tpm).
-     - [import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go)
+     - [Importing an external key and load it ot the TPM]([https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go](https://github.com/salrashid123/tpm2/tree/master/tpm_import_external_rsa))
   
     b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
 
@@ -405,7 +405,7 @@ tpm2_evictcontrol -C o -c key.ctx 0x81010002
 
 1) Generate Key on TPM and make it persistent
 
-The following uses `tpm2_tools` but is pretty straightfoward to do the same steps using `go-tpm` (see the [import_gcp_sa.go](https://github.com/salrashid123/tpm2/blob/master/utils/import_gcp_sa.go) for a sample)
+The following uses `tpm2_tools` but is pretty straightfoward to do the same steps using `go-tpm`
 
 ```bash
 tpm2_createprimary -C e -g sha256 -G rsa -c primary.ctx
@@ -418,9 +418,9 @@ tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
 
 2) use the TPM based private key to create an `x509` certificate
 
-Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM.  We need to use it to sing for an x509 cert.  I've written the following [certgen.go](https://raw.githubusercontent.com/salrashid123/signer/master/certgen/certgen.go) utility to do that.
+Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM.  We need to use it to sing for an x509 cert.  I've written the following [certgen.go](https://github.com/salrashid123/signer/blob/master/util/certgen/certgen.go) utility to do that.
 
-Remember to modify certgen.go and configure/enable the TPM Credential mode
+Remember to modify certgen.go and configure/enable the TPM Credential mode (where `persistentHandle in this example is `0x81010002`)
 
 ```golang
     rwc, err := tpm2.OpenTPM(*tpmPath)
