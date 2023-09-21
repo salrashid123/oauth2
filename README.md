@@ -82,16 +82,14 @@ import (
 	"os"
 
 	"cloud.google.com/go/storage"
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sts"
 	sal "github.com/salrashid123/oauth2/aws"
 	"google.golang.org/api/option"
 )
 
 const (
-	gcpBucketName  = "mineral-minutia-820-cab1"
+	gcpBucketName  = "core-eso-bucket"
 	gcpObjectName  = "foo.txt"
 	awsRegion      = "us-east-1"
 	awsRoleArn     = "arn:aws:iam::291738886548:role/gcpsts"
@@ -102,78 +100,64 @@ var ()
 
 func main() {
 
-	AWS_ACCESS_KEY_ID := "readacted"
-	AWS_SECRET_ACCESS_KEY := "reacted"
-
-	// first just get any credentials
+	// with static credentials
+	AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
+	 AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
 	creds := credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
 
-	session, err := session.NewSession(&aws.Config{
-		Credentials: creds,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+	// with env vars
+	// export AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
+	// export AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
+	// export AWS_REGION=us-east-1
+	// creds := credentials.NewEnvCredentials()
 
-	conf := &aws.Config{
-		Region:      aws.String(awsRegion),
-		Credentials: creds,
-	}
-	// print out its identity
-	stsService := sts.New(session, conf)
-	input := &sts.GetCallerIdentityInput{}
-	result, err := stsService.GetCallerIdentity(input)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Original Caller Identity :" + result.GoString())
+	// with AWS_WEB_IDENTITY_TOKEN_FILE (eg ecs)
 
-	// now assume role and bootstrap the new tokens into another credential
-	params := &sts.AssumeRoleInput{
-		RoleArn:         aws.String(awsRoleArn),
-		RoleSessionName: aws.String(awsSessionName),
-	}
-	resp, err := stsService.AssumeRole(params)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// body, err := ioutil.ReadFile("/tmp/aws.txt")
+	// if err != nil {
+	// 	log.Fatalf("unable to read file: %v", err)
+	// }
 
-	log.Printf("Assumed user Arn: %s", *resp.AssumedRoleUser.Arn)
-	log.Printf("Assumed AssumedRoleId: %s", *resp.AssumedRoleUser.AssumedRoleId)
-	creds = credentials.NewStaticCredentials(*resp.Credentials.AccessKeyId, *resp.Credentials.SecretAccessKey, *resp.Credentials.SessionToken)
+	// svc := sts.New(session.New())
+	// input := &sts.AssumeRoleWithWebIdentityInput{
+	// 	WebIdentityToken: aws.String(string(body)),
+	// 	RoleArn:          aws.String("arn:aws:iam::291738886548:role/cicps3role"),
+	// 	RoleSessionName:  aws.String(awsSessionName),
+	// }
+	// resp, err := svc.AssumeRoleWithWebIdentity(input)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// creds := credentials.NewStaticCredentials(*resp.Credentials.AccessKeyId, *resp.Credentials.SecretAccessKey, *resp.Credentials.SessionToken)
 
-	//creds = credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
+	// or transparently with
+	// export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/aws.txt
+	// export AWS_ROLE_ARN="arn:aws:iam::291738886548:role/cicps3role"
+	// export AWS_ROLE_SESSION_NAME=mysession
+	// export AWS_REGION=us-east-1
 
-	// use that to print out the new identity specs and exchange for a GCP token
-	conf = &aws.Config{
-		Region:      aws.String(awsRegion),
-		Credentials: creds,
-	}
-	stsService = sts.New(session, conf)
-	input = &sts.GetCallerIdentityInput{}
-	result, err = stsService.GetCallerIdentity(input)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("New Caller Identity :" + result.GoString())
+	// cfg, err := config.LoadDefaultConfig(context.TODO())
+	// if err != nil {
+	// 	log.Fatalf("failed to load configuration, %v", err)
+	// }
+
+	// awsCreds, err := cfg.Credentials.Retrieve(context.TODO())
+	// if err != nil {
+	// 	log.Fatalf("failed to load creds, %v", err)
+	// }
+	// creds := credentials.NewStaticCredentials(awsCreds.AccessKeyID, awsCreds.SecretAccessKey, awsCreds.SessionToken)
 
 	awsTokenSource, err := sal.AWSTokenSource(
 		&sal.AwsTokenConfig{
 			AwsCredential:        *creds,
 			Scope:                "https://www.googleapis.com/auth/cloud-platform",
-			TargetResource:       "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
+			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
 			Region:               "us-east-1",
-			TargetServiceAccount: "aws-federated@mineral-minutia-820.iam.gserviceaccount.com",
+			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
+			UseIAMToken:          true,
 		},
 	)
 
-	tok, err := awsTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("AWS Derived GCP access_token: %s\n", tok.AccessToken)
-
-	// use the AWSTokenSource to call GCS
 	ctx := context.Background()
 	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
 	if err != nil {
