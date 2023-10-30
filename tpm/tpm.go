@@ -10,14 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/google/go-tpm-tools/client"
 	tpmjwt "github.com/salrashid123/golang-jwt-tpm"
 	"golang.org/x/oauth2"
@@ -50,7 +49,7 @@ type rtokenJSON struct {
 
 type ClaimWithSubject struct {
 	Scope string `json:"scope"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 // TpmTokenSource returns a TokenSource for a ServiceAccount where
@@ -116,6 +115,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		log.Fatalf("Unable to initialize tpmJWT: %v", err)
 	}
 	tpmjwt.SigningMethodTPMRS256.Override()
+	jwt.MarshalSingleStringAsArray = false
 
 	iat := time.Now()
 	exp := iat.Add(time.Hour)
@@ -125,11 +125,11 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 		claims := &ClaimWithSubject{
 			Scope: "https://www.googleapis.com/auth/cloud-platform",
-			StandardClaims: jwt.StandardClaims{
-				IssuedAt:  iat.Unix(),
-				ExpiresAt: exp.Unix(),
+			RegisteredClaims: jwt.RegisteredClaims{
+				IssuedAt:  jwt.NewNumericDate(iat),
+				ExpiresAt: jwt.NewNumericDate(exp),
 				Issuer:    ts.email,
-				Audience:  "https://accounts.google.com/o/oauth2/token",
+				Audience:  []string{"https://oauth2.googleapis.com/token"},
 			},
 		}
 
@@ -166,7 +166,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Token Request error:, %v", err)
 		}
 
-		f, err := ioutil.ReadAll(resp.Body)
+		f, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to parse tokenresponse, %v", err)
 		}
@@ -180,12 +180,12 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 	} else {
 
-		claims := &jwt.StandardClaims{
-			IssuedAt:  iat.Unix(),
-			ExpiresAt: exp.Unix(),
+		claims := &jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(iat),
+			ExpiresAt: jwt.NewNumericDate(exp),
 			Issuer:    ts.email,
 			Subject:   ts.email,
-			Audience:  ts.audience,
+			Audience:  []string{ts.audience},
 		}
 
 		token := jwt.NewWithClaims(tpmjwt.SigningMethodTPMRS256, claims)
