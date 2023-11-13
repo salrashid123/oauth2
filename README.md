@@ -3,10 +3,7 @@
 
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
-* **AWS**: `access_token` for a Federated identity or GCP service account that is derived from AWSCredentials
-* **OIDC-Federated**: `access_token` for an arbitrary OIDC identity that is exchanged for a GCP Credential
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
-* **KMS**: `access_token` for a serviceAccount where the private key is saved inside Google Cloud KMS
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **DummyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
 
@@ -23,34 +20,27 @@ After
 
 ```golang
 import (
-	aws "github.com/salrashid123/oauth2/aws"
 	oidcfederated "github.com/salrashid123/oauth2/oidcfederated"
-	kms "github.com/salrashid123/oauth2/kms"
 	tpm "github.com/salrashid123/oauth2/tpm"
 	vault "github.com/salrashid123/oauth2/vault"	
 )
-
 ```
 
+**TPM**
 
+  * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
+  * [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
+  * [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
 
-**AWS**
-* [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
+**Vault**
+  * [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
+  * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
+  * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
+
 
 **Federate OIDC**
 * [Accessing resources from OIDC Providers](https://cloud.google.com/iam/docs/access-resources-oidc)
 
-**TPM**
-* [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
-* [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
-* [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
-
-**KMS**
-* [mTLS with Google Cloud KMS](https://github.com/salrashid123/kms_golang_signer)
-
-**Vault**
-* [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
-* [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
 
 
 
@@ -59,257 +49,6 @@ import (
 
 
 ---
-
-## Usage AWS
-
-This credential type exchanges an AWS Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws) and utilizes
-[GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
-
-- For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-aws)
-
-- For GCP->AWS credential exchange, see [AWSCompat](https://github.com/salrashid123/awscompat)
-
-
-Sample usage
-
-```golang
-package main
-
-import (
-	"context"
-	"io"
-	"log"
-	"os"
-
-	"cloud.google.com/go/storage"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	sal "github.com/salrashid123/oauth2/aws"
-	"google.golang.org/api/option"
-)
-
-const (
-	gcpBucketName  = "core-eso-bucket"
-	gcpObjectName  = "foo.txt"
-	awsRegion      = "us-east-1"
-	awsRoleArn     = "arn:aws:iam::291738886548:role/gcpsts"
-	awsSessionName = "mysession"
-)
-
-var ()
-
-func main() {
-
-	// with static credentials
-	AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
-	 AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
-	creds := credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
-
-	// with env vars
-	// export AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
-	// export AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
-	// export AWS_REGION=us-east-1
-	// creds := credentials.NewEnvCredentials()
-
-	// with AWS_WEB_IDENTITY_TOKEN_FILE (eg ecs)
-
-	// body, err := ioutil.ReadFile("/tmp/aws.txt")
-	// if err != nil {
-	// 	log.Fatalf("unable to read file: %v", err)
-	// }
-
-	// svc := sts.New(session.New())
-	// input := &sts.AssumeRoleWithWebIdentityInput{
-	// 	WebIdentityToken: aws.String(string(body)),
-	// 	RoleArn:          aws.String("arn:aws:iam::291738886548:role/cicps3role"),
-	// 	RoleSessionName:  aws.String(awsSessionName),
-	// }
-	// resp, err := svc.AssumeRoleWithWebIdentity(input)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// creds := credentials.NewStaticCredentials(*resp.Credentials.AccessKeyId, *resp.Credentials.SecretAccessKey, *resp.Credentials.SessionToken)
-
-	// or transparently with
-	// export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/aws.txt
-	// export AWS_ROLE_ARN="arn:aws:iam::291738886548:role/cicps3role"
-	// export AWS_ROLE_SESSION_NAME=mysession
-	// export AWS_REGION=us-east-1
-
-	// cfg, err := config.LoadDefaultConfig(context.TODO())
-	// if err != nil {
-	// 	log.Fatalf("failed to load configuration, %v", err)
-	// }
-
-	// awsCreds, err := cfg.Credentials.Retrieve(context.TODO())
-	// if err != nil {
-	// 	log.Fatalf("failed to load creds, %v", err)
-	// }
-	// creds := credentials.NewStaticCredentials(awsCreds.AccessKeyID, awsCreds.SecretAccessKey, awsCreds.SessionToken)
-
-	awsTokenSource, err := sal.AWSTokenSource(
-		&sal.AwsTokenConfig{
-			AwsCredential:        *creds,
-			Scope:                "https://www.googleapis.com/auth/cloud-platform",
-			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
-			Region:               "us-east-1",
-			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
-			UseIAMToken:          true,
-		},
-	)
-
-	ctx := context.Background()
-	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
-	if err != nil {
-		log.Fatalf("Could not create storage Client: %v", err)
-	}
-
-	bkt := storageClient.Bucket(gcpBucketName)
-	obj := bkt.Object(gcpObjectName)
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer r.Close()
-	if _, err := io.Copy(os.Stdout, r); err != nil {
-		panic(err)
-	}
-
-}
-
-```
----
-
-
-
-
-## Usage Federated OIDC
-
-This credential type exchanges an arbitrary OIDC Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from an OIDC identity provider](https://cloud.google.com/iam/docs/access-resources-oidcs) and utilizes
-[GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
-
-- For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-oidc)
-
-
-Sample usage
-
-```golang
-package main
-
-import (
-	"context"
-	"io"
-	"log"
-	"os"
-
-	"cloud.google.com/go/storage"
-	sal "github.com/salrashid123/oauth2/oidcfederated"
-	"google.golang.org/api/option"
-)
-
-var ()
-
-func main() {
-
-	sourceToken := "eyJhbGci--redacted"
-	scope := "https://www.googleapis.com/auth/cloud-platform"
-	targetResource := "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/oidc-pool-1/providers/oidc-provider-1"
-	targetServiceAccount := "oidc-federated@mineral-minutia-820.iam.gserviceaccount.com"
-	gcpBucketName := "mineral-minutia-820-cab1"
-	gcpObjectName := "foo.txt"
-
-	oTokenSource, err := sal.OIDCFederatedTokenSource(
-		&sal.OIDCFederatedTokenConfig{
-			SourceTokenSource: oauth2.StaticTokenSource(&oauth2.Token{
-				AccessToken: sourceToken,
-			}),
-			Scope:                scope,
-			TargetResource:       targetResource,
-			TargetServiceAccount: targetServiceAccount,
-			UseIAMToken:          true,
-		},
-	)
-
-	tok, err := oTokenSource.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("OIDC Derived GCP access_token: %s\n", tok.AccessToken)
-
-	ctx := context.Background()
-	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(oTokenSource))
-	if err != nil {
-		log.Fatalf("Could not create storage Client: %v", err)
-	}
-
-	bkt := storageClient.Bucket(gcpBucketName)
-	obj := bkt.Object(gcpObjectName)
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer r.Close()
-	if _, err := io.Copy(os.Stdout, r); err != nil {
-		panic(err)
-	}
-```
-
-### Chained Credential usage. 
-
-Note, you can also chain tokensources together where one relies on another for refresh:
-
-In this,  we acquire the oidc federating token from some other source (eg, the exec provider)
-
-```bash
-export ENV_TOKEN="eyJHbGc..."
-go run main.go
-```
-
-where main.go:
-
-```golang
-
-import (
-	salext "github.com/salrashid123/oauth2/external"
-	sal "github.com/salrashid123/oauth2/oidcfederated"
-)
-
-
-	extTokenSource, err := salext.ExternalTokenSource(
-		&salext.ExternalTokenConfig{
-			Command: "/usr/bin/echo",
-			Env:     []string{},
-			Args:    []string{os.ExpandEnv("$ENV_TOKEN")},
-
-			Parser: func(b []byte) (salext.ExternalTokenResponse, error) {
-				ret := &salext.ExternalTokenResponse{
-					Token:     string(b),
-					ExpiresIn: 3600,
-					TokenType: "Bearer",
-				}
-				return *ret, nil
-			},
-		},
-	)
-
-	scope := "https://www.googleapis.com/auth/cloud-platform"
-	targetResource := "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/oidc-pool-1/providers/oidc-provider-1"
-	targetServiceAccount := "oidc-federated@mineral-minutia-820.iam.gserviceaccount.com"
-	gcpBucketName := "mineral-minutia-820-cab1"
-	gcpObjectName := "foo.txt"
-
-	oTokenSource, err := sal.OIDCFederatedTokenSource(
-		&sal.OIDCFederatedTokenConfig{
-			SourceTokenSource: extTokenSource,
-			Scope:                scope,
-			TargetResource:       targetResource,
-			TargetServiceAccount: targetServiceAccount,
-			UseIAMToken:          true,
-		},
-	)
-
-	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(oTokenSource))
-```
 
 ## Usage TpmTokenSource
 
@@ -589,79 +328,6 @@ func main() {
 
 ---
 
-## Usage KmsTokenSource
-
->> **WARNING:**  `KmsTokenSource` is  experimental.  This repo is NOT supported by Google
-
-Frankly, I'm not sure the feasibility or usecases for this tokenSource but what this allows you to do is use KMS as the keystorage system for a serviceAccount.  The obvious question is that to gain access to the KMS key you must already be authenticated...
-
-
-There are two types of tokens this TokenSource fulfills:
-
-- `JWTAccessToken`
-- `Oauth2 access_tokens`.
-
-JWTAccessToken is a custom variation of the standard oauth2 access token that is works with just a certain subset of GCP apis.  What JWTAccessTokens do is locally sign a JWT and send that directly to GCP instead of the the normal oauth2 flows where the local signed token is exchanged for yet another `access_token`.  The flow where the the exchange for a local signed JWT for an access_token is the normal oauth2 flow.  If you use any of the services described [here](https://github.com/googleapis/googleapis/tree/master/google) (eg, PubSub), use JWTAccessToken.  If you use any other serivce (eg GCS), use oauth2.  JWTAccessTokens are enabled by default.  To enable oauth2access tokens, set `UseOauthToken: true`.
-
-For more inforamtion, see: [Faster ServiceAccount authentication for Google Cloud Platform APIs](https://medium.com/google-cloud/faster-serviceaccount-authentication-for-google-cloud-platform-apis-f1355abc14b2).
-
-
-Suppose your credential does not directly grant you access to a resource but rather you must impersonate service account to do so (possibly with also some  [IAM Conditional](https://cloud.google.com/iam/docs/conditions-overview) as well).  You can that bit of impersonation via the impersonation credentials described in this repo but the other way is to acquire access to a service account key somehow.  One way to do that last part is to gain access through KMS API call.
-
-Anyway, there are two ways to embed a ServiceAccount's keys into KMS:
-
-1. Download a serviceAccount Key and the import private key into KMS
-2. Generate a a keypair on KMS, download the public certificate and associate the public key with a ServiceAccount.
-
-There are advantages and disadvantages to each ...both of which hinge on on the controls you have in your system/processes.   For (1), you need to make sure the private key ise securely transported.   For (2), make sure the public key is securely transported...
-
-
-either do (A) or (B) below:
-
-### A. Generate Service Account key on KMS directly
-
-On Google cloud console, go to the KMS screen for a given project, create a new key with the specifications:
-
-* `Asymmetric Sign`
-* `2048 bit RSA key PKCS#1 v1.5 padding - SHA256 Digest`
-* `"Generate a key for me"`
-
-
-### B. Generate public/private key and import into KMS
-
-First generate a keypair on your local filesystem.  You can use `openssl` or any CA you own (make sure the key is enabled for digitalSignatures)
-
-For openssl based key, you can generate a CA and keypair as shown [here](https://github.com/salrashid123/gcegrpc/tree/master/certs).
-
-You must also generate an `x509` certificate since we will need that to import into KMS. Once youv'e generated a keypair, follow the [procedure to upload the external key](https://cloud.google.com/iam/docs/creating-managing-service-account-keys#uploading) into KMS.
-
-
-### Specify IAM permission on the keys to Sign
-
-However you've defined and uploaded the key to KMS, the client credential that is bootstrapped to use this TokenSource must have IAM permissions on that key to use it as `Cloud KMS CryptoKey Signer`. 
-
-
-Finally, specify the KMS setting as the `KmsTokenConfig` while bootstrapping the credential
-
-
-```golang
-	kmsTokenSource, err := salkms.KmsTokenSource(
-		&salkms.KmsTokenConfig{
-			Email: "your_service_account@your_project.iam.gserviceaccount.com",
-
-			ProjectId:  "your_project",
-			LocationId: "us-central1",
-			KeyRing:    "yourkeyring",
-			Key:        "yourkey",
-			KeyVersion: "1",
-
-			Audience: "https://pubsub.googleapis.com/google.pubsub.v1.Publisher",
-			KeyID:    "yourkeyid",
-			UseAccessToken: false,
-		},
-	)
-```
-
 ## Usage VaultTokenSource
 
 `VaultTokenSource` provides a google cloud credential and tokenSource derived from a `VAULT_TOKEN`.
@@ -670,69 +336,11 @@ Vault must be configure first to return a valid `access_token` with appropriate 
 
 For more information, see [Vault access_token for GCP](https://www.vaultproject.io/docs/secrets/gcp/index.html#access-tokens) and specific implementation [here](https://github.com/salrashid123/vault_gcp#accesstoken)
 
-As an example setup, consider a Vault HCL config for Google Secrets capable of listing pubsub topics in a project
 
-- `pubsub.hcl`
-```hcl
-resource "//cloudresourcemanager.googleapis.com/projects/$PROJECT_ID" {
-        roles = ["roles/pubsub.viewer"]
-}
-```
+For an end-to-end example, see
 
-Then apply a roleset that allows access as `my-token-roleset`:
+* [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
 
-```bash
-vault write gcp/roleset/my-token-roleset   \
-   project="$PROJECT_ID"   \
-   secret_type="access_token" \
-   token_scopes="https://www.googleapis.com/auth/cloud-platform"  \
-   bindings=@pubsub.hcl
-```
-
-Generate a token for this given policy:
-
-```bash
-$ vault token create -policy=my-policy 
-Key                  Value
----                  -----
-token                s.TsDU8YfeaVbpT9rLiZS7LcVJ
-token_accessor       HMkju91OWvR3u9tKJ8jrsYfo
-token_duration       768h
-token_renewable      true
-token_policies       ["default" "my-policy"]
-identity_policies    []
-policies             ["default" "my-policy"]
-```
-
-Verify the new token can return the access_token:
-
-```bash
-export VAULT_TOKEN=s.TsDU8YfeaVbpT9rLiZS7LcVJ
-
-vault read gcp/token/my-token-roleset
-Key                   Value
----                   -----
-expires_at_seconds    1575132122
-token                 ya29.c.Kl6zB1_redacted
-token_ttl             59m59s
-```
-
-```bash
-curl  -H "X-Vault-Token: s.TsDU8YfeaVbpT9rLiZS7LcVJ"  --cacert CA_crt.pem   https://vault.domain.com:8200/v1/gcp/token/my-token-roleset
-```
-
-Finally, in a golang client, you can initialize it by specifying the `VAULT_TOKEN`, path the the certificate the vault server uses and the address:
-
-```golang
-	tokenSource, err := sal.VaultTokenSource(
-		&sal.VaultTokenConfig{
-			VaultToken:  "s.TsDU8YfeaVbpT9rLiZS7LcVJ",
-			VaultPath:   "gcp/token/my-token-roleset",
-			VaultCAcert: "CA_crt.pem",
-			VaultAddr:   "https://vault.domain.com:8200",
-		},
-	)
-```
 
 
 ## Usage DummyTokenSource
