@@ -5,6 +5,8 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
+* **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials
+
 * **DummyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
 
 >> **Update 11/1/20** Refactored modules!!!!
@@ -23,6 +25,7 @@ import (
 	oidcfederated "github.com/salrashid123/oauth2/oidcfederated"
 	tpm "github.com/salrashid123/oauth2/tpm"
 	vault "github.com/salrashid123/oauth2/vault"	
+	aws "github.com/salrashid123/oauth2/aws"	
 )
 ```
 
@@ -37,6 +40,8 @@ import (
   * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
   * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
 
+**AWS**
+  * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
 
 **Federate OIDC**
 * [Accessing resources from OIDC Providers](https://cloud.google.com/iam/docs/access-resources-oidc)
@@ -325,6 +330,126 @@ func main() {
 	
 ```
 
+---
+
+## Usage AWS
+
+This credential type exchanges an AWS Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws) and utilizes
+[GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
+
+- For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-aws)
+
+- For GCP->AWS credential exchange, see [AWSCompat](https://github.com/salrashid123/awscompat)
+
+
+Sample usage
+
+```golang
+package main
+
+import (
+	"context"
+	"io"
+	"log"
+	"os"
+
+	"cloud.google.com/go/storage"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	sal "github.com/salrashid123/oauth2/aws"
+	"google.golang.org/api/option"
+)
+
+const (
+	gcpBucketName  = "core-eso-bucket"
+	gcpObjectName  = "foo.txt"
+	awsRegion      = "us-east-1"
+	awsRoleArn     = "arn:aws:iam::291738886548:role/gcpsts"
+	awsSessionName = "mysession"
+)
+
+var ()
+
+func main() {
+
+	// with static credentials
+	AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
+	 AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
+	creds := credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
+
+	// with env vars
+	// export AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
+	// export AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
+	// export AWS_REGION=us-east-1
+	// creds := credentials.NewEnvCredentials()
+
+	// with AWS_WEB_IDENTITY_TOKEN_FILE (eg ecs)
+
+	// body, err := ioutil.ReadFile("/tmp/aws.txt")
+	// if err != nil {
+	// 	log.Fatalf("unable to read file: %v", err)
+	// }
+
+	// svc := sts.New(session.New())
+	// input := &sts.AssumeRoleWithWebIdentityInput{
+	// 	WebIdentityToken: aws.String(string(body)),
+	// 	RoleArn:          aws.String("arn:aws:iam::291738886548:role/cicps3role"),
+	// 	RoleSessionName:  aws.String(awsSessionName),
+	// }
+	// resp, err := svc.AssumeRoleWithWebIdentity(input)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// creds := credentials.NewStaticCredentials(*resp.Credentials.AccessKeyId, *resp.Credentials.SecretAccessKey, *resp.Credentials.SessionToken)
+
+	// or transparently with
+	// export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/aws.txt
+	// export AWS_ROLE_ARN="arn:aws:iam::291738886548:role/cicps3role"
+	// export AWS_ROLE_SESSION_NAME=mysession
+	// export AWS_REGION=us-east-1
+
+	// cfg, err := config.LoadDefaultConfig(context.TODO())
+	// if err != nil {
+	// 	log.Fatalf("failed to load configuration, %v", err)
+	// }
+
+	// awsCreds, err := cfg.Credentials.Retrieve(context.TODO())
+	// if err != nil {
+	// 	log.Fatalf("failed to load creds, %v", err)
+	// }
+	// creds := credentials.NewStaticCredentials(awsCreds.AccessKeyID, awsCreds.SecretAccessKey, awsCreds.SessionToken)
+
+	awsTokenSource, err := sal.AWSTokenSource(
+		&sal.AwsTokenConfig{
+			AwsCredential:        *creds,
+			Scope:                "https://www.googleapis.com/auth/cloud-platform",
+			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
+			Region:               "us-east-1",
+			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
+			UseIAMToken:          true,
+		},
+	)
+
+	ctx := context.Background()
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
+	if err != nil {
+		log.Fatalf("Could not create storage Client: %v", err)
+	}
+
+	bkt := storageClient.Bucket(gcpBucketName)
+	obj := bkt.Object(gcpObjectName)
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer r.Close()
+	if _, err := io.Copy(os.Stdout, r); err != nil {
+		panic(err)
+	}
+
+}
+
+```
 
 ---
 
