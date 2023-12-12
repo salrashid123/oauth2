@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -112,7 +111,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 	keyctx, err := tpmjwt.NewTPMContext(ctx, config)
 	if err != nil {
-		log.Fatalf("Unable to initialize tpmJWT: %v", err)
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to initialize tpmJWT: %v", err)
 	}
 	tpmjwt.SigningMethodTPMRS256.Override()
 	jwt.MarshalSingleStringAsArray = false
@@ -141,7 +140,6 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 		tokenString, err := token.SignedString(keyctx)
 		if err != nil {
-			log.Fatalf("Error signing %v", err)
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request, %v", err)
 		}
 
@@ -196,7 +194,6 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 		tokenString, err := token.SignedString(keyctx)
 		if err != nil {
-			log.Fatalf("Error signing %v", err)
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request, %v", err)
 		}
 		msg = tokenString

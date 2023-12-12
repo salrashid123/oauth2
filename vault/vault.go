@@ -9,8 +9,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -36,11 +36,10 @@ type VaultTokenConfig struct {
 // You must configure a Vault policy the VAULT_TOKEN that returns a GCP access_token:
 // https://www.vaultproject.io/docs/secrets/gcp/index.html#access-tokens
 //
-//  VaultToken (string): The VAULT_TOKEN capable of deriving a GCP access_token.
-//  VaultPath (string): Vault gcp secrets policy endpoint. (eg "gcp/token/my-token-roleset")
-//  VaultCAcert (string): The root CA Certificate for the Vault Server's endpoint
-//  VaultAddr (string): Hostname/Address URI for the vault server (https://your_vault.server:8200/)
-//
+//	VaultToken (string): The VAULT_TOKEN capable of deriving a GCP access_token.
+//	VaultPath (string): Vault gcp secrets policy endpoint. (eg "gcp/token/my-token-roleset")
+//	VaultCAcert (string): The root CA Certificate for the Vault Server's endpoint
+//	VaultAddr (string): Hostname/Address URI for the vault server (https://your_vault.server:8200/)
 func VaultTokenSource(tokenConfig *VaultTokenConfig) (oauth2.TokenSource, error) {
 
 	if tokenConfig.VaultToken == "" || tokenConfig.VaultPath == "" || tokenConfig.VaultAddr == "" {
@@ -80,7 +79,7 @@ func (ts *vaultTokenSource) Token() (*oauth2.Token, error) {
 	var caCertPool *x509.CertPool
 	caCertPool = x509.NewCertPool()
 	if ts.vaultCAcert != "" {
-		caCert, err := ioutil.ReadFile(ts.vaultCAcert)
+		caCert, err := os.ReadFile(ts.vaultCAcert)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to read root CA certificate for Vault Server: %v", err)
 		}
