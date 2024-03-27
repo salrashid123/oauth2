@@ -129,7 +129,6 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 	var rwc io.ReadWriteCloser
 
 	if ts.tpmdevice != nil {
-		fmt.Println(">>>>>>>>>>>>>>>>>>>>>")
 		rwc = ts.tpmdevice
 	} else {
 		var err error
