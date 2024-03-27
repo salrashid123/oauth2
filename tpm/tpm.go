@@ -47,6 +47,7 @@ type tpmTokenSource struct {
 	keyId           string
 	scopes          []string
 	useOauthToken   bool
+	myToken         *oauth2.Token
 }
 
 type rtokenJSON struct {
@@ -123,6 +124,9 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 	ts.refreshMutex.Lock()
 	defer ts.refreshMutex.Unlock()
+	if ts.myToken.Valid() {
+		return ts.myToken, nil
+	}
 
 	ctx := context.Background()
 
@@ -233,5 +237,6 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		}
 		msg = tokenString
 	}
-	return &oauth2.Token{AccessToken: msg, TokenType: "Bearer", Expiry: exp}, nil
+	ts.myToken = &oauth2.Token{AccessToken: msg, TokenType: "Bearer", Expiry: exp}
+	return ts.myToken, nil
 }
