@@ -90,11 +90,11 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Key must be specified")
 	}
 
-	if tokenConfig.TPMDevice == nil || tokenConfig.Email == "" {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.TPMDevice,  TPMTokenConfig.Email and cannot be nil")
+	if tokenConfig.Email == "" {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.Email and cannot be nil")
 	}
 
-	if tokenConfig.TPMDevice != nil || tokenConfig.TPMPath != "" {
+	if tokenConfig.TPMDevice != nil && tokenConfig.TPMPath != "" {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: one of TPMTokenConfig.TPMDevice,  TPMTokenConfig.TPMPath must be set")
 	}
 
@@ -129,6 +129,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 	var rwc io.ReadWriteCloser
 
 	if ts.tpmdevice != nil {
+		fmt.Println(">>>>>>>>>>>>>>>>>>>>>")
 		rwc = ts.tpmdevice
 	} else {
 		var err error
