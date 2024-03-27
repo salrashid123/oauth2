@@ -18,6 +18,7 @@ import (
 
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/google/go-tpm-tools/client"
+	"github.com/google/go-tpm/legacy/tpm2"
 	tpmjwt "github.com/salrashid123/golang-jwt-tpm"
 	"golang.org/x/oauth2"
 )
@@ -29,6 +30,7 @@ const (
 // TpmTokenConfig parameters to start Credential based off of TPM RSA Private Key.
 type TpmTokenConfig struct {
 	TPMDevice       io.ReadWriteCloser
+	TPMPath         string
 	Email, Audience string
 	Key             *client.Key // load a key from handle
 	KeyId           string
@@ -39,7 +41,8 @@ type TpmTokenConfig struct {
 type tpmTokenSource struct {
 	refreshMutex    *sync.Mutex
 	email, audience string
-	tpm             io.ReadWriteCloser
+	tpmdevice       io.ReadWriteCloser
+	tpmpath         string
 	key             *client.Key
 	keyId           string
 	scopes          []string
@@ -65,7 +68,8 @@ type ClaimWithSubject struct {
 // This TpmTokenSource will only work on platforms where the PrivateKey for the Service
 // Account is already loaded on the TPM previously and available via Persistent Handle.
 //
-//		Tpm (io.ReadWriteCloser): The device Handle for the TPM (eg. "/dev/tpm0")
+//		TPMDevice (io.ReadWriteCloser): The device Handle for the TPM managed by the caller Use either TPMDevice or TPMPath
+//		TPMPath (string): The device Handle for the TPM (eg. "/dev/tpm0" managed by the library. Use either TPMDevice or TPMPath
 //		Email (string): The service account to get the token for.
 //		Audience (string): The audience representing the service the token is valid for.
 //		    The audience must match the name of the Service the token is intended for.  See
@@ -90,6 +94,10 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.TPMDevice,  TPMTokenConfig.Email and cannot be nil")
 	}
 
+	if tokenConfig.TPMDevice != nil || tokenConfig.TPMPath != "" {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: one of TPMTokenConfig.TPMDevice,  TPMTokenConfig.TPMPath must be set")
+	}
+
 	if tokenConfig.Audience == "" && tokenConfig.UseOauthToken == false {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience must be specified if UseOauthToken is false")
 	}
@@ -102,7 +110,8 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		refreshMutex:  &sync.Mutex{},
 		email:         tokenConfig.Email,
 		audience:      tokenConfig.Audience,
-		tpm:           tokenConfig.TPMDevice,
+		tpmdevice:     tokenConfig.TPMDevice,
+		tpmpath:       tokenConfig.TPMPath,
 		key:           tokenConfig.Key,
 		keyId:         tokenConfig.KeyId,
 		scopes:        tokenConfig.Scopes,
@@ -117,14 +126,27 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 	ctx := context.Background()
 
+	var rwc io.ReadWriteCloser
+
+	if ts.tpmdevice != nil {
+		rwc = ts.tpmdevice
+	} else {
+		var err error
+		rwc, err = tpm2.OpenTPM(ts.tpmpath)
+		if err != nil {
+			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to open tpm: %v", err)
+		}
+		defer rwc.Close()
+	}
+
 	config := &tpmjwt.TPMConfig{
-		TPMDevice: ts.tpm,
+		TPMDevice: rwc,
 		Key:       ts.key,
 	}
 
 	keyctx, err := tpmjwt.NewTPMContext(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to initialize tpmJWT: %v", err)
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to initialize tpmjwt: %v", err)
 	}
 	tpmjwt.SigningMethodTPMRS256.Override()
 	jwt.MarshalSingleStringAsArray = false

@@ -294,7 +294,8 @@ func main() {
 	}
 
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMDevice: rwc,
+		TPMDevice: rwc,   // tpm is managed by the caller
+		//TPMPath: "/dev/tpm0",  // tpm is managed by the library
 		Key:       k,
 		Email:     *serviceAccountEmail,
 		//KeyId:         *keyId,
