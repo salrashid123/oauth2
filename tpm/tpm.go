@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,12 +22,17 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const (
+	GCP_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+)
+
 // TpmTokenConfig parameters to start Credential based off of TPM RSA Private Key.
 type TpmTokenConfig struct {
 	TPMDevice       io.ReadWriteCloser
 	Email, Audience string
 	Key             *client.Key // load a key from handle
 	KeyId           string
+	Scopes          []string
 	UseOauthToken   bool
 }
 
@@ -36,6 +42,7 @@ type tpmTokenSource struct {
 	tpm             io.ReadWriteCloser
 	key             *client.Key
 	keyId           string
+	scopes          []string
 	useOauthToken   bool
 }
 
@@ -64,6 +71,7 @@ type ClaimWithSubject struct {
 //		    The audience must match the name of the Service the token is intended for.  See
 //		    documentation links above.
 //		    (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
+//		Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
 //		Key (go-tpm-tools.client.Key): The client.Key from go-tpm-tools to use for the oauth handle.  Required field
 //		KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
 //		    This field is optional but recomended if  UseOauthTOken is false
@@ -86,6 +94,10 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Audience must be specified if UseOauthToken is false")
 	}
 
+	if len(tokenConfig.Scopes) == 0 {
+		tokenConfig.Scopes = []string{GCP_CLOUD_PLATFORM_SCOPE}
+	}
+
 	return &tpmTokenSource{
 		refreshMutex:  &sync.Mutex{},
 		email:         tokenConfig.Email,
@@ -93,6 +105,7 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		tpm:           tokenConfig.TPMDevice,
 		key:           tokenConfig.Key,
 		keyId:         tokenConfig.KeyId,
+		scopes:        tokenConfig.Scopes,
 		useOauthToken: tokenConfig.UseOauthToken,
 	}, nil
 
@@ -123,7 +136,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 	if ts.useOauthToken {
 
 		claims := &ClaimWithSubject{
-			Scope: "https://www.googleapis.com/auth/cloud-platform",
+			Scope: strings.Join(ts.scopes, " "),
 			RegisteredClaims: jwt.RegisteredClaims{
 				IssuedAt:  jwt.NewNumericDate(iat),
 				ExpiresAt: jwt.NewNumericDate(exp),

@@ -38,7 +38,7 @@ type sTSOptions struct {
 
 type AwsTokenConfig struct {
 	AwsCredential        awscred.Credentials
-	Scope                string
+	Scopes               []string
 	TargetResource       string
 	Region               string
 	TargetServiceAccount string
@@ -51,7 +51,7 @@ type iamGenerateAccessTokenResponse struct {
 }
 
 const (
-	GCP_STS_ENDPOINT         = "https://sts.googleapis.com/v1beta/token"
+	GCP_STS_ENDPOINT         = "https://sts.googleapis.com/v1/token"
 	AWS_STS_ENDPOINT         = "https://sts.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15"
 	GCP_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 )
@@ -65,7 +65,7 @@ const (
 //
 //  AwsCredential (aws.Credential): The root AWS Credential to use.  Maybe either a direct user
 //     user credential or one derived through AssumeRole
-//  Scope (string): The GCP Scope value for the GCP token. (default: cloud-platform)
+//  Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
 //  TargetResource (string): Full GCP URI of the workload identity pool.  eg
 //     "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
 //  Region (string): The AWS Region for the STS Service (eg us-east-1))
@@ -81,13 +81,13 @@ func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 		return nil, fmt.Errorf("oauth2/google: AwsCredential cannot be nil")
 	}
 
-	if tokenConfig.Scope == "" {
-		tokenConfig.Scope = GCP_CLOUD_PLATFORM_SCOPE
+	if len(tokenConfig.Scopes) == 0 {
+		tokenConfig.Scopes = []string{GCP_CLOUD_PLATFORM_SCOPE}
 	}
 	return &awsTokenSource{
 		refreshMutex:         &sync.Mutex{},
 		rootSource:           &tokenConfig.AwsCredential,
-		scope:                tokenConfig.Scope,
+		scopes:               tokenConfig.Scopes,
 		targetResource:       tokenConfig.TargetResource,
 		region:               tokenConfig.Region,
 		targetServiceAccount: tokenConfig.TargetServiceAccount,
@@ -97,7 +97,7 @@ func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 
 type awsTokenSource struct {
 	refreshMutex         *sync.Mutex
-	scope                string
+	scopes               []string
 	targetResource       string
 	rootSource           *awscred.Credentials
 	targetTokenSource    *oauth2.Token
@@ -188,7 +188,7 @@ func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
 	form.Add("audience", ts.targetResource)
 	form.Add("subject_token_type", "urn:ietf:params:aws:token-type:aws4_request")
 	form.Add("requested_token_type", "urn:ietf:params:oauth:token-type:access_token")
-	form.Add("scope", ts.scope)
+	form.Add("scope", strings.Join(ts.scopes, " "))
 	form.Add("subject_token", string(e))
 
 	gcpSTSResp, err := http.PostForm(GCP_STS_ENDPOINT, form)
