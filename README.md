@@ -437,6 +437,59 @@ For an end-to-end example, see
 * [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
 
 
+## Usage STS
+
+To use this tokensource, you need to have any token you can exchange with an STS server.  You'll also need an STS server.
+
+For a sample server, see:
+
+- [https://tools.ietf.org/html/rfc8693](https://tools.ietf.org/html/rfc8693)
+- [https://github.com/salrashid123/sts_server](https://github.com/salrashid123/sts_server)
+
+To use this, you need to bootstrap a TokenSource...In the example below, the root token is `rootTS` that includes
+some arbitrary value.  That token is sent to n STS server at `https://stsserver-3kdezruzua-uc.a.run.app/token` which
+validate the rootToken secret, then returns back yet another Token that is wrapped into a new TokenSource.  The
+new tokensrouce can be used in an arbitrary client...not necessarily for a Google service
+
+```golang
+import (
+	ssts "github.com/salrashid123/oauth2/sts"
+	dummyts "github.com/salrashid123/oauth2/dummy"
+)
+	// caCert, err := ioutil.ReadFile("google_root_ca.pem")
+	// caCertPool := x509.NewCertPool()
+	// caCertPool.AppendCertsFromPEM(caCert)
+
+	// tlsConfig := &tls.Config{
+	// 	ServerName: "server.domain.com",
+	// 	RootCAs:    caCertPool,
+	// }
+	client := &http.Client{}
+
+	rootTS, err := dummyts.NewDummyTokenSource(&dummyts.DummyTokenConfig{
+		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
+		RotationIntervalSeconds: 10,
+	})
+	stsTokenSource, _ := ssts.STSTokenSource(
+		&ssts.STSTokenConfig{
+			TokenExchangeServiceURI: "https://stsserver-3kdezruzua-uc.a.run.app/token",
+			Resource:                "localhost",
+			Audience:                "localhost",
+			Scope:                   "https://www.googleapis.com/auth/cloud-platform",
+			SubjectTokenSource:      rootTS,
+			SubjectTokenType:        "urn:ietf:params:oauth:token-type:access_token",
+			RequestedTokenType:      "urn:ietf:params:oauth:token-type:access_token",
+			// HttpClient:          client,
+		},
+	)
+
+	client = oauth2.NewClient(context.TODO(), stsTokenSource)
+	resp, err := client.Get("http://localhost:8080/")
+	if err != nil {
+		log.Printf("Error creating client %v", err)
+		return
+	}
+```
 
 ## Usage DummyTokenSource
 
