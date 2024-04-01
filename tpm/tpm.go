@@ -189,10 +189,10 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		data.Add("assertion_type", "http://oauth.net/grant_type/jwt/1.0/bearer")
 		data.Add("assertion", tokenString)
 
-		hreq, err := http.NewRequest("POST", "https://accounts.google.com/o/oauth2/token", bytes.NewBufferString(data.Encode()))
+		hreq, err := http.NewRequest(http.MethodPost, "https://accounts.google.com/o/oauth2/token", bytes.NewBufferString(data.Encode()))
 		hreq.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to generate token Requestt, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to generate token Request, %v", err)
 		}
 		resp, err := client.Do(hreq)
 		if err != nil {

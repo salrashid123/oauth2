@@ -7,28 +7,6 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials
 
-* **DummyTokenSource**: `access_token` or `id_token` This is just a test tokensource that will return a token from a list of provided values. Use this as a test harness
-
->> **Update 11/1/20** Refactored modules!!!!
-
-Before:
-```golang
-import (
-	sal "github.com/salrashid123/oauth2"
-)
-```
-
-After
-
-```golang
-import (
-	oidcfederated "github.com/salrashid123/oauth2/oidcfederated"
-	tpm "github.com/salrashid123/oauth2/tpm"
-	vault "github.com/salrashid123/oauth2/vault"	
-	aws "github.com/salrashid123/oauth2/aws"	
-)
-```
-
 **TPM**
 
   * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
@@ -43,15 +21,8 @@ import (
 **AWS**
   * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
 
-**Federate OIDC**
-* [Accessing resources from OIDC Providers](https://cloud.google.com/iam/docs/access-resources-oidc)
-
-
-
 
 > NOTE: This is NOT supported by Google
-
-
 
 ---
 
@@ -59,8 +30,6 @@ import (
 
 
 for a simple end-to-end, see [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
-
->> **WARNING:**  `TpmTokenSource` is experimental.  This repo is NOT supported by Google
 
 
 There are two types of tokens this TokenSource fulfills:
@@ -160,7 +129,7 @@ Remember to modify certgen.go and configure/enable the TPM Credential mode (wher
 
 ```
 
-Once you run certgen.go the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
+Once you run `certgen.go` the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
 
 ```bash
  go run certgen.go 
@@ -173,7 +142,7 @@ Once you run certgen.go the output should be just `cert.pem` which is infact jus
 The following steps are outlined [here](https://cloud.google.com/iam/docs/creating-managing-service-account-keys#uploading).
 
 ```bash
-gcloud alpha iam service-accounts keys upload cert.pem  --iam-account YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com
+gcloud  iam service-accounts keys upload cert.pem  --iam-account YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Verify...you should see a new certificate.  Note down the `KEY_ID`
@@ -194,7 +163,7 @@ If you already have a list of EKCerts you know for sure trust and want to distri
 
 Each VM will then load it into non-volatile area of the TPM and you can use it to sign as much as you want.
 
-for detaled walkthrough of that, see 
+for detailed walkthrough of that, see 
 
 [Importing ServiceAccount Credentials to TPMs](https://gist.github.com/salrashid123/9e4a0328fd8c84374ace78c76a1e34cb)
 
@@ -211,7 +180,7 @@ note, there are also several ways to securely transfer public/private keys betwe
 
 	The TPM based `TokenSource` can now be used to access a GCP resource using either a plain HTTPClient or _native_ GCP library (`google-cloud-pubsub`)!!
 
-```
+```bash
 	 go run main.go --projectId=core-eso \
 	   --persistentHandle=0x81008000 \
 	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \

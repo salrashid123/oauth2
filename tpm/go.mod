@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-tpm-tools v0.4.0
-	github.com/salrashid123/golang-jwt-tpm v1.1.2
+	github.com/salrashid123/golang-jwt-tpm v1.2.0
 	golang.org/x/oauth2 v0.11.0
 )
 
