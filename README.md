@@ -187,6 +187,10 @@ note, there are also several ways to securely transfer public/private keys betwe
 		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
 ```
 
+The TPM Device at `/dev/tpm0` cannot be access concurrently. If you are using this tokensource you can either supply a an open handle to the library:
+
+- Externally Managed TPM
+
 ```golang
 package main
 
@@ -225,7 +229,6 @@ var (
 	}
 )
 
-
 func main() {
 
 	flag.Parse()
@@ -236,38 +239,12 @@ func main() {
 		return
 	}
 	defer rwc.Close()
-
-	if *flush {
-		totalHandles := 0
-		for _, handleType := range handleNames["all"] {
-			handles, err := client.Handles(rwc, handleType)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting handles", *tpmPath, err)
-				os.Exit(1)
-			}
-			for _, handle := range handles {
-				if err = tpm2.FlushContext(rwc, handle); err != nil {
-					fmt.Fprintf(os.Stderr, "Error flushing handle 0x%x: %v\n", handle, err)
-					os.Exit(1)
-				}
-				fmt.Printf("Handle 0x%x flushed\n", handle)
-				totalHandles++
-			}
-		}
-	}
 	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error closing tpm%v\n", err)
-		os.Exit(1)
-	}
-
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMDevice: rwc,   // tpm is managed by the caller
-		//TPMPath: "/dev/tpm0",  // tpm is managed by the library
-		Key:       k,
-		Email:     *serviceAccountEmail,
-		//KeyId:         *keyId,
+		TPMDevice:     rwc, // tpm is managed by the caller
+		Key:           k,
+		Email:         *serviceAccountEmail,
 		UseOauthToken: true,
 	})
 
@@ -297,8 +274,19 @@ func main() {
 	}
 
 }
-	
 ```
+
+- Internally Managed TPM
+
+```golang
+		ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+			TPMPath:   "/dev/tpm0", // tpm is managed by the library
+			KeyHandle: tpmutil.Handle(*persistentHandle).HandleValue(),
+			Email:         *serviceAccountEmail,
+			UseOauthToken: true,
+		})
+```
+
 
 Finally, if the key has a PCR Policy, 
 
@@ -329,25 +317,34 @@ tpm2_verifysignature -c rsa2.ctx -g sha256 -s sig2.rssa -m message.dat
 tpm2_flushcontext session.dat
 
 ## finally make the key persistent
-tpm2_evictcontrol -C o -c rsa2.ctx 0x81008004
+tpm2_evictcontrol -C o -c rsa2.ctx 0x81008005
 ```
 
-If the rsa key on the handle is associated with a ServiceAccount, you can initialize the client 
+If the rsa key on the handle is associated with a ServiceAccount, you can initialize the client but you need to specify the PCR values:
 
+- External
 
 ```golang
-	rHandle := tpmutil.Handle(uint32(0x81008004))
-	s, err := client.NewPCRSession(rwc, tpm2.PCRSelection{tpm2.AlgSHA256, []int{23}})
-
-	rk, err := client.LoadCachedKey(rwc, rHandle, s)
-
+	s, err := client.NewPCRSession(rwc, tpm2.PCRSelection{tpm2.AlgSHA256, []int{*pcr}})
+	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), s)
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMDevice: rwc,   // tpm is managed by the caller
-		Key:       rk,
-		Email:     *serviceAccountEmail,
+		TPMDevice:     rwc, // tpm is managed by the caller
+		Key:           k,
+		Email:         *serviceAccountEmail,
 		UseOauthToken: true,
 	})
+```
 
+- Internal
+
+```golang
+	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMPath:   "/dev/tpm0", // tpm is managed by the library
+		KeyHandle: tpmutil.Handle(*persistentHandle).HandleValue(),
+		PCRs:          []int{23},
+		Email:         *serviceAccountEmail,
+		UseOauthToken: true,
+	})
 ```
 
 ---
