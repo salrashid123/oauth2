@@ -49,20 +49,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error opening key %v\n", err)
 		os.Exit(1)
 	}
+
+	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMDevice:     rwc, // tpm is managed by the caller
+		Key:           k,
+		Email:         *serviceAccountEmail,
+		UseOauthToken: true,
+	})
+	tok, err := ts.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Token: %v", tok.AccessToken)
+
 	i := 0
 	for {
-
-		ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-			TPMDevice:     rwc, // tpm is managed by the caller
-			Key:           k,
-			Email:         *serviceAccountEmail,
-			UseOauthToken: true,
-		})
-		tok, err := ts.Token()
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Token: %v", tok.AccessToken)
 
 		ctx := context.Background()
 
@@ -84,7 +85,7 @@ func main() {
 		}
 		i = i + 1
 		log.Printf("%d\n", i)
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
 
 	}
 

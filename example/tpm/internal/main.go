@@ -55,20 +55,21 @@ func main() {
 	k.Close()
 	rwc.Close()
 
+	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMPath:   "/dev/tpm0", // tpm is managed by the library
+		KeyHandle: tpmutil.Handle(*persistentHandle).HandleValue(),
+		//PCRs:          []int{23},
+		Email:         *serviceAccountEmail,
+		UseOauthToken: true,
+	})
+	tok, err := ts.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Token: %v", tok.AccessToken)
+
 	i := 0
 	for {
-		ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-			TPMPath:   "/dev/tpm0", // tpm is managed by the library
-			KeyHandle: tpmutil.Handle(*persistentHandle).HandleValue(),
-			//PCRs:          []int{23},
-			Email:         *serviceAccountEmail,
-			UseOauthToken: true,
-		})
-		tok, err := ts.Token()
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Token: %v", tok.AccessToken)
 
 		ctx := context.Background()
 
@@ -90,7 +91,7 @@ func main() {
 		}
 		i = i + 1
 		log.Printf("%d\n", i)
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
 
 	}
 
