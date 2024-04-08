@@ -300,6 +300,56 @@ func main() {
 	
 ```
 
+Finally, if the key has a PCR Policy, 
+
+```bash
+tpm2_pcrread sha256:23
+
+## create an auth session and pcr
+tpm2_startauthsession -S session.dat
+tpm2_policypcr -S session.dat -l sha256:23  -L policy.dat
+tpm2_flushcontext session.dat
+tpm2_createprimary -C o -c primary2.ctx
+
+## create the rsa key but bind it to the policy
+tpm2_create -G rsa -u rsa2.pub -r rsa2.priv -C primary2.ctx  -L policy.dat
+
+tpm2_load -C primary2.ctx -u rsa2.pub -r rsa2.priv -c rsa2.ctx
+
+## now you need a session with policies to fulfill before using the key
+tpm2_pcrread sha256:23 -o pcr23_val.bin
+tpm2_startauthsession --policy-session -S session.dat
+tpm2_policypcr -S session.dat -l sha256:23  -L policy.dat
+
+echo "my message" > message.dat
+
+## sign it by referencing the session
+tpm2_sign -c rsa2.ctx -g sha256 -o sig2.rssa message.dat -p"session:session.dat"
+tpm2_verifysignature -c rsa2.ctx -g sha256 -s sig2.rssa -m message.dat
+tpm2_flushcontext session.dat
+
+## finally make the key persistent
+tpm2_evictcontrol -C o -c rsa2.ctx 0x81008004
+```
+
+If the rsa key on the handle is associated with a ServiceAccount, you can initialize the client 
+
+
+```golang
+	rHandle := tpmutil.Handle(uint32(0x81008004))
+	s, err := client.NewPCRSession(rwc, tpm2.PCRSelection{tpm2.AlgSHA256, []int{23}})
+
+	rk, err := client.LoadCachedKey(rwc, rHandle, s)
+
+	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMDevice: rwc,   // tpm is managed by the caller
+		Key:       rk,
+		Email:     *serviceAccountEmail,
+		UseOauthToken: true,
+	})
+
+```
+
 ---
 
 ## Usage AWS
