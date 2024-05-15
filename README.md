@@ -45,13 +45,17 @@ There are two types of tokens this TokenSource fulfills:
 
 	For example, create an Google Cloud [Shielded VM](https://cloud.google.com/security/shielded-cloud/shielded-vm).
 
-You can 
+From there you have several options on how to associate a key on a TPM with a service account.  You can either do
 
-* A) download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
+* **A)** download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
+
 or
-* B) Generate a Key _ON THE TPM_ and then import the public part to GCP.
+
+* **B)** Generate a Key _ON THE TPM_ and then import the public part to GCP.
+
 or
-* C) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
+
+* **C**) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
 
 
 #### A) Import Service Account json to TPM:
@@ -84,7 +88,7 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 
 ```bash
 	tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
-	tpm2_import -C primary.ctx -G rsa -i /tmp/key_rsa.pem -u key.pub -r key.prv
+	tpm2_import -C primary.ctx -G rsa2048:rsassa:null -g sha256 -i /tmp/key_rsa.pem -u key.pub -r key.prv
 	tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 ```
 
@@ -106,7 +110,7 @@ The following uses `tpm2_tools` but is pretty straightfoward to do the same step
 
 ```bash
 tpm2_createprimary -C e -g sha256 -G rsa -c primary.ctx
-tpm2_create -G rsa -u key.pub -r key.priv -C primary.ctx
+tpm2_create -G rsa2048:rsassa:null -g sha256 -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
 tpm2_evictcontrol -C o -c 0x81010002
 tpm2_evictcontrol -C o -c key.ctx 0x81010002
@@ -169,6 +173,8 @@ for detailed walkthrough of that, see
 
 note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
+* for HMAC though you can modify for RSA: [https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate_go](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate_go)
+* duplicate RSA key and prevent reduplication [https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)
 
 ---
 
@@ -288,7 +294,7 @@ func main() {
 ```
 
 
-Finally, if the key has a PCR Policy, 
+Finally, if the key has a PCR Policy like as shown below:
 
 ```bash
 tpm2_pcrread sha256:23
@@ -300,7 +306,7 @@ tpm2_flushcontext session.dat
 tpm2_createprimary -C o -c primary2.ctx
 
 ## create the rsa key but bind it to the policy
-tpm2_create -G rsa -u rsa2.pub -r rsa2.priv -C primary2.ctx  -L policy.dat
+tpm2_create -G rsa2048:rsassa:null -g sha256 -u rsa2.pub -r rsa2.priv -C primary2.ctx  -L policy.dat
 
 tpm2_load -C primary2.ctx -u rsa2.pub -r rsa2.priv -c rsa2.ctx
 
@@ -320,7 +326,7 @@ tpm2_flushcontext session.dat
 tpm2_evictcontrol -C o -c rsa2.ctx 0x81008005
 ```
 
-If the rsa key on the handle is associated with a ServiceAccount, you can initialize the client but you need to specify the PCR values:
+Then in code, you can you can initialize the client but you need to specify the PCR values first:
 
 - External
 
