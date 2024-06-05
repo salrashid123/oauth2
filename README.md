@@ -232,6 +232,13 @@ eg
 	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
 ```
 
+If you want to enable [TPM Session Encryption](https://github.com/salrashid123/tpm2/tree/master/tpm_encrypted_session), see [here](https://github.com/salrashid123/gcp-adc-tpm/tree/main?tab=readme-ov-file#encrypted-tpm-sessions).  You will need to modify `example/tpm/main.go` to acquire the Endorsement keys and the supply them after validation as following parameters to `TpmTokenConfig`
+
+```golang
+	EncryptionHandle tpm2.TPMHandle   // (optional) handle to use for transit encryption
+	EncryptionPub    *tpm2.TPMTPublic // (optional) public key to use for transit encryption
+```
+
 ---
 
 ## Usage AWS
