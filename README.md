@@ -7,20 +7,6 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 * **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials
 
-**TPM**
-
-  * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
-  * [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
-  * [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
-
-**Vault**
-  * [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
-  * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
-  * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
-
-**AWS**
-  * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
-
 
 > NOTE: This is NOT supported by Google
 
@@ -87,9 +73,28 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
     Then setup a primary object on the TPM and import `private.pem` we created earlier
 
 ```bash
-	tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
-	tpm2_import -C primary.ctx -G rsa2048:rsassa:null -g sha256 -i /tmp/key_rsa.pem -u key.pub -r key.prv
-	tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
+
+## if you want to use a software TPM, 
+# rm -rf /tmp/myvtpm && mkdir /tmp/myvtpm
+# sudo swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
+## then specify "127.0.0.1:2321"  as the TPM device path in the examples, export the following var
+# export TPM2TOOLS_TCTI="swtpm:port=2321"
+
+## note  the primary can be the "H2" profile from https://www.hansenpartnership.com/draft-bottomley-tpm2-keys.html#name-parent
+## see https://gist.github.com/salrashid123/9822b151ebb66f4083c5f71fd4cdbe40
+### otherwise with defaults
+#tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
+
+printf '\x00\x00' > unique.dat
+tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+
+tpm2_import -C primary.ctx -G rsa2048:rsassa:null -g sha256 -i /tmp/key_rsa.pem -u key.pub -r key.prv
+tpm2_flushcontext -t
+tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
+tpm2_flushcontext -t
+
+## optionally export the key to an encrypted keyfile using tpm2tss-genkey 
+# tpm2tss-genkey -u key.pub -r key.prv svc_account_tpm.pem
 ```
 
 At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`
@@ -98,6 +103,20 @@ At this point, the embedded key is a `transient object` reference via file conte
 tpm2_evictcontrol -C o -c key.ctx 0x81010002
 		persistent-handle: 0x81010002
 		action: persisted
+```
+
+or if you choose to use a `keyfile` (which you can enable with some edits in `example/tpm/main.go`).  The TPM enclosed keyfile would be formatted as:
+
+```bash
+$ cat svc_account_tpm.pem 
+-----BEGIN TSS2 PRIVATE KEY-----
+MIHyBgZngQUKAQMCBQCAAAAABDIAMAAIAAsABABSAAAABQALACBnst0f8mx8m2Xk
+2HsQgLV1odcQFhMh85q0d9IzIwRMKASBrACqACB1+h8NZjM64tOkWsjeORqY0kFN
+VqIP6LgJfZ4jJTkgUwAQ0WyWLEfxAeFJLiNFwp9mjO/LLyQ2MaewE0W5Mdsoa/7p
+KVaIFlT7upOmB5/i2MxWPT4Du8EYHI+nlhb7ZHjhuItYpmbK1EhHIeaWHduXiZvc
+ObcXb7YqFF53uD1qgaa0R8/6bROu1qZjuFLFOekOTQ4X/8Rs4ty7w1tsjZbIKZqL
+urvq+J0=
+-----END TSS2 PRIVATE KEY-----
 ```
 
 ---
@@ -109,10 +128,10 @@ tpm2_evictcontrol -C o -c key.ctx 0x81010002
 The following uses `tpm2_tools` but is pretty straightfoward to do the same steps using `go-tpm`
 
 ```bash
-tpm2_createprimary -C e -g sha256 -G rsa -c primary.ctx
+tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
 tpm2_create -G rsa2048:rsassa:null -g sha256 -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
-tpm2_evictcontrol -C o -c 0x81010002
+# tpm2_evictcontrol -C o -c 0x81010002
 tpm2_evictcontrol -C o -c key.ctx 0x81010002
 tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
 ```
@@ -122,16 +141,6 @@ tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
 Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM.  We need to use it to sing for an x509 cert.  I've written the following [certgen.go](https://github.com/salrashid123/signer/blob/master/util/certgen/certgen.go) utility to do that.
 
 Remember to modify certgen.go and configure/enable the TPM Credential mode (where `persistentHandle in this example is `0x81010002`)
-
-```golang
-    rwc, err := tpm2.OpenTPM(*tpmPath)
-	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
-	r, err := saltpm.NewTPMCrypto(&saltpm.TPM{
-		TpmDevice: rwc,
-		Key:       k,
-	})
-
-```
 
 Once you run `certgen.go` the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
 
@@ -188,169 +197,39 @@ note, there are also several ways to securely transfer public/private keys betwe
 
 ```bash
 	 go run main.go --projectId=core-eso \
-	   --persistentHandle=0x81008000 \
+	   --persistentHandle=0x81010002 \
 	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \
 		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
 ```
 
-The TPM Device at `/dev/tpm0` cannot be access concurrently. If you are using this tokensource you can either supply a an open handle to the library:
-
-- Externally Managed TPM
+eg
 
 ```golang
-package main
 
-import (
-	"context"
-	"flag"
-	"fmt"
-	"log"
-	"os"
+	// open the tpm
+	rwc, err := OpenTPM(*tpmPath)
+	rwr := transport.FromReadWriter(rwc)
 
-	"cloud.google.com/go/storage"
-	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm/legacy/tpm2"
-	"github.com/google/go-tpm/tpmutil"
-	sal "github.com/salrashid123/oauth2/tpm"
-	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
-)
+	// acquire the key handle on the tpm
+	pub, err := tpm2.ReadPublic{
+		ObjectHandle: tpm2.TPMHandle(*persistentHandle), //persistent handle
+	}.Execute(rwr)
 
-var (
-	tpmPath          = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
-	persistentHandle = flag.Uint("persistentHandle", 0x81008000, "Handle value")
-
-	projectId           = flag.String("projectId", "core-eso", "ProjectID")
-	serviceAccountEmail = flag.String("serviceAccountEmail", "tpm-sa@core-eso.iam.gserviceaccount.com", "Email of the serviceaccount")
-	bucketName          = flag.String("bucketName", "core-eso-bucket", "Bucket name")
-	keyId               = flag.String("keyId", "71b831d149e4667809644840cda2e7e0080035d5", "GCP PRivate key id assigned.")
-
-	flush       = flag.Bool("flush", false, "flushHandles")
-	handleNames = map[string][]tpm2.HandleType{
-		"all":       {tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    {tpm2.HandleTypeLoadedSession},
-		"saved":     {tpm2.HandleTypeSavedSession},
-		"transient": {tpm2.HandleTypeTransient},
-		"none":      {},
-	}
-)
-
-func main() {
-
-	flag.Parse()
-
-	rwc, err := tpm2.OpenTPM(*tpmPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Can't open TPM %s: %v", *tpmPath, err)
-		return
-	}
-	defer rwc.Close()
-	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), nil)
-
+	// use it to get a tokensource 
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMDevice:     rwc, // tpm is managed by the caller
-		Key:           k,
+		TPMDevice: rwc,
+		AuthHandle: &tpm2.AuthHandle{
+			//Handle: rsaKey.ObjectHandle, // from keyfile
+			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
+			Name:   pub.Name,
+			Auth:   tpm2.PasswordAuth(nil),
+		},
 		Email:         *serviceAccountEmail,
 		UseOauthToken: true,
 	})
 
-	tok, err := ts.Token()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Token: %v", tok.AccessToken)
-
-	ctx := context.Background()
-
-	// GCS does not support JWTAccessTokens, the following will only work if UseOauthToken is set to True
+	// use it with a gcp api client
 	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
-	if err != nil {
-		log.Fatal(err)
-	}
-	sit := storageClient.Buckets(ctx, *projectId)
-	for {
-		battrs, err := sit.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf(battrs.Name)
-	}
-
-}
-```
-
-- Internally Managed TPM
-
-```golang
-		ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-			TPMPath:   "/dev/tpm0", // tpm is managed by the library
-			KeyHandle: tpmutil.Handle(*persistentHandle).HandleValue(),
-			Email:         *serviceAccountEmail,
-			UseOauthToken: true,
-		})
-```
-
-
-Finally, if the key has a PCR Policy like as shown below:
-
-```bash
-tpm2_pcrread sha256:23
-
-## create an auth session and pcr
-tpm2_startauthsession -S session.dat
-tpm2_policypcr -S session.dat -l sha256:23  -L policy.dat
-tpm2_flushcontext session.dat
-tpm2_createprimary -C o -c primary2.ctx
-
-## create the rsa key but bind it to the policy
-tpm2_create -G rsa2048:rsassa:null -g sha256 -u rsa2.pub -r rsa2.priv -C primary2.ctx  -L policy.dat
-
-tpm2_load -C primary2.ctx -u rsa2.pub -r rsa2.priv -c rsa2.ctx
-
-## now you need a session with policies to fulfill before using the key
-tpm2_pcrread sha256:23 -o pcr23_val.bin
-tpm2_startauthsession --policy-session -S session.dat
-tpm2_policypcr -S session.dat -l sha256:23  -L policy.dat
-
-echo "my message" > message.dat
-
-## sign it by referencing the session
-tpm2_sign -c rsa2.ctx -g sha256 -o sig2.rssa message.dat -p"session:session.dat"
-tpm2_verifysignature -c rsa2.ctx -g sha256 -s sig2.rssa -m message.dat
-tpm2_flushcontext session.dat
-
-## finally make the key persistent
-tpm2_evictcontrol -C o -c rsa2.ctx 0x81008005
-```
-
-Then in code, you can you can initialize the client but you need to specify the PCR values first:
-
-- External
-
-```golang
-	s, err := client.NewPCRSession(rwc, tpm2.PCRSelection{tpm2.AlgSHA256, []int{*pcr}})
-	k, err := client.LoadCachedKey(rwc, tpmutil.Handle(*persistentHandle), s)
-	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMDevice:     rwc, // tpm is managed by the caller
-		Key:           k,
-		Email:         *serviceAccountEmail,
-		UseOauthToken: true,
-	})
-```
-
-- Internal
-
-```golang
-	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMPath:   "/dev/tpm0", // tpm is managed by the library
-		KeyHandle: tpmutil.Handle(*persistentHandle).HandleValue(),
-		PCRs:          []int{23},
-		Email:         *serviceAccountEmail,
-		UseOauthToken: true,
-	})
 ```
 
 ---
@@ -368,79 +247,11 @@ This credential type exchanges an AWS Credential for a GCP credential.  The spec
 Sample usage
 
 ```golang
-package main
-
-import (
-	"context"
-	"io"
-	"log"
-	"os"
-
-	"cloud.google.com/go/storage"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	sal "github.com/salrashid123/oauth2/aws"
-	"google.golang.org/api/option"
-)
-
-const (
-	gcpBucketName  = "core-eso-bucket"
-	gcpObjectName  = "foo.txt"
-	awsRegion      = "us-east-1"
-	awsRoleArn     = "arn:aws:iam::291738886548:role/gcpsts"
-	awsSessionName = "mysession"
-)
-
-var ()
-
-func main() {
-
-	// with static credentials
+	// with static credentials 
+	// you can use **any other credential sorce for the TPM
 	AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
-	 AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
+	AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
 	creds := credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
-
-	// with env vars
-	// export AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
-	// export AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
-	// export AWS_REGION=us-east-1
-	// creds := credentials.NewEnvCredentials()
-
-	// with AWS_WEB_IDENTITY_TOKEN_FILE (eg ecs)
-
-	// body, err := ioutil.ReadFile("/tmp/aws.txt")
-	// if err != nil {
-	// 	log.Fatalf("unable to read file: %v", err)
-	// }
-
-	// svc := sts.New(session.New())
-	// input := &sts.AssumeRoleWithWebIdentityInput{
-	// 	WebIdentityToken: aws.String(string(body)),
-	// 	RoleArn:          aws.String("arn:aws:iam::291738886548:role/cicps3role"),
-	// 	RoleSessionName:  aws.String(awsSessionName),
-	// }
-	// resp, err := svc.AssumeRoleWithWebIdentity(input)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// creds := credentials.NewStaticCredentials(*resp.Credentials.AccessKeyId, *resp.Credentials.SecretAccessKey, *resp.Credentials.SessionToken)
-
-	// or transparently with
-	// export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/aws.txt
-	// export AWS_ROLE_ARN="arn:aws:iam::291738886548:role/cicps3role"
-	// export AWS_ROLE_SESSION_NAME=mysession
-	// export AWS_REGION=us-east-1
-
-	// cfg, err := config.LoadDefaultConfig(context.TODO())
-	// if err != nil {
-	// 	log.Fatalf("failed to load configuration, %v", err)
-	// }
-
-	// awsCreds, err := cfg.Credentials.Retrieve(context.TODO())
-	// if err != nil {
-	// 	log.Fatalf("failed to load creds, %v", err)
-	// }
-	// creds := credentials.NewStaticCredentials(awsCreds.AccessKeyID, awsCreds.SecretAccessKey, awsCreds.SessionToken)
 
 	awsTokenSource, err := sal.AWSTokenSource(
 		&sal.AwsTokenConfig{
@@ -452,26 +263,7 @@ func main() {
 			UseIAMToken:          true,
 		},
 	)
-
-	ctx := context.Background()
 	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
-	if err != nil {
-		log.Fatalf("Could not create storage Client: %v", err)
-	}
-
-	bkt := storageClient.Bucket(gcpBucketName)
-	obj := bkt.Object(gcpObjectName)
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		panic(err)
-	}
-	defer r.Close()
-	if _, err := io.Copy(os.Stdout, r); err != nil {
-		panic(err)
-	}
-
-}
-
 ```
 
 ---
@@ -523,3 +315,23 @@ import (
 ### Usage YubiKeyTokenSource
 
 The `YubikeyTokenSource` can be found in a different repo [https://github.com/salrashid123/yubikey](https://github.com/salrashid123/yubikey)
+
+
+---
+
+## Additional References
+
+**TPM**
+
+  * [golang-jwt for Trusted Platform Module (TPM)](https://github.com/salrashid123/golang-jwt-tpm)
+  * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
+  * [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
+  * [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
+
+**Vault**
+  * [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
+  * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
+  * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
+
+**AWS**
+  * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)

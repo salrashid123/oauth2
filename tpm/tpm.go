@@ -17,9 +17,7 @@ import (
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
-	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm/legacy/tpm2"
-	"github.com/google/go-tpm/tpmutil"
+	"github.com/google/go-tpm/tpm2"
 	tpmjwt "github.com/salrashid123/golang-jwt-tpm"
 	"golang.org/x/oauth2"
 )
@@ -30,29 +28,29 @@ const (
 
 // TpmTokenConfig parameters to start Credential based off of TPM RSA Private Key.
 type TpmTokenConfig struct {
-	TPMDevice       io.ReadWriteCloser
-	TPMPath         string
-	Email, Audience string
-	Key             *client.Key // load a key from handle
-	KeyId           string
-	Scopes          []string
-	UseOauthToken   bool
-	KeyHandle       uint32
-	PCRs            []int
+	TPMDevice        io.ReadWriteCloser
+	Email, Audience  string
+	AuthHandle       *tpm2.AuthHandle // load a key from handle
+	KeyId            string
+	Scopes           []string
+	UseOauthToken    bool
+	EncryptionHandle tpm2.TPMHandle   // (optional) handle to use for transit encryption
+	EncryptionPub    *tpm2.TPMTPublic // (optional) public key to use for transit encryption
+
 }
 
 type tpmTokenSource struct {
-	refreshMutex    *sync.Mutex
-	email, audience string
-	tpmdevice       io.ReadWriteCloser
-	tpmpath         string
-	key             *client.Key
-	keyId           string
-	scopes          []string
-	useOauthToken   bool
-	myToken         *oauth2.Token
-	keyHandle       uint32
-	pcrs            []int
+	refreshMutex     *sync.Mutex
+	email, audience  string
+	tpmdevice        io.ReadWriteCloser
+	authHandle       *tpm2.AuthHandle
+	keyId            string
+	scopes           []string
+	useOauthToken    bool
+	myToken          *oauth2.Token
+	encryptionHandle tpm2.TPMHandle   // (optional) handle to use for transit encryption
+	encryptionPub    *tpm2.TPMTPublic // (optional) public key to use for transit encryption
+
 }
 
 type rtokenJSON struct {
@@ -75,14 +73,13 @@ type ClaimWithSubject struct {
 // Account is already loaded on the TPM previously and available via Persistent Handle.
 //
 //		TPMDevice (io.ReadWriteCloser): The device Handle for the TPM managed by the caller Use either TPMDevice or TPMPath
-//		TPMPath (string): The device Handle for the TPM (eg. "/dev/tpm0" managed by the library. Use either TPMDevice or TPMPath
 //		Email (string): The service account to get the token for.
 //		Audience (string): The audience representing the service the token is valid for.
 //		    The audience must match the name of the Service the token is intended for.  See
 //		    documentation links above.
 //		    (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
 //		Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
-//		Key (go-tpm-tools.client.Key): The client.Key from go-tpm-tools to use for the oauth handle.  Required field
+//		AuthHandle (*tpm2.AuthHandle): The pre-authorized key handle to use
 //		KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
 //		    This field is optional but recomended if  UseOauthTOken is false
 //		    Find the keyId associated with the service account by running:
@@ -92,24 +89,12 @@ type ClaimWithSubject struct {
 //	     eg: audience="https://pubsub.googleapis.com/google.pubsub.v1.Publisher"
 func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
-	if tokenConfig.Key == nil && tokenConfig.KeyHandle == 0 {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: Key or KeyHandle must be specified")
+	if tokenConfig.AuthHandle == nil || tokenConfig.TPMDevice == nil {
+		return nil, fmt.Errorf("salrashid123/x/oauth2/google: KeyHandle and TPMDevice must be specified")
 	}
 
 	if tokenConfig.Email == "" {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: TPMTokenConfig.Email and cannot be nil")
-	}
-
-	if tokenConfig.TPMDevice != nil && tokenConfig.TPMPath != "" {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google: one of TPMTokenConfig.TPMDevice,  TPMTokenConfig.TPMPath must be set")
-	}
-
-	if tokenConfig.TPMDevice != nil && tokenConfig.Key == nil {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google:  if TPMTokenConfig.TPMDevice is specified, a Key must be set")
-	}
-
-	if tokenConfig.TPMPath != "" && tokenConfig.KeyHandle == 0 {
-		return nil, fmt.Errorf("salrashid123/x/oauth2/google:  if TPMTokenConfig.TPMPath is specified, a KeyHandle must be set")
 	}
 
 	if tokenConfig.Audience == "" && tokenConfig.UseOauthToken == false {
@@ -121,17 +106,16 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 	}
 
 	return &tpmTokenSource{
-		refreshMutex:  &sync.Mutex{},
-		email:         tokenConfig.Email,
-		audience:      tokenConfig.Audience,
-		tpmdevice:     tokenConfig.TPMDevice,
-		tpmpath:       tokenConfig.TPMPath,
-		key:           tokenConfig.Key,
-		keyId:         tokenConfig.KeyId,
-		scopes:        tokenConfig.Scopes,
-		useOauthToken: tokenConfig.UseOauthToken,
-		keyHandle:     tokenConfig.KeyHandle,
-		pcrs:          tokenConfig.PCRs,
+		refreshMutex:     &sync.Mutex{},
+		email:            tokenConfig.Email,
+		audience:         tokenConfig.Audience,
+		tpmdevice:        tokenConfig.TPMDevice,
+		keyId:            tokenConfig.KeyId,
+		scopes:           tokenConfig.Scopes,
+		useOauthToken:    tokenConfig.UseOauthToken,
+		authHandle:       tokenConfig.AuthHandle,
+		encryptionHandle: tokenConfig.EncryptionHandle,
+		encryptionPub:    tokenConfig.EncryptionPub,
 	}, nil
 
 }
@@ -145,37 +129,12 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 	ctx := context.Background()
 
-	var rwc io.ReadWriteCloser
-	var k *client.Key
-	if ts.tpmdevice != nil {
-		rwc = ts.tpmdevice
-		k = ts.key
-	} else {
-		var err error
-		rwc, err = tpm2.OpenTPM(ts.tpmpath)
-		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to open tpm: %v", err)
-		}
-		defer rwc.Close()
-
-		if len(ts.pcrs) > 0 {
-			s, err := client.NewPCRSession(rwc, tpm2.PCRSelection{tpm2.AlgSHA256, ts.pcrs})
-			if err != nil {
-				return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to create pcr session: %v", err)
-			}
-			k, err = client.LoadCachedKey(rwc, tpmutil.Handle(ts.keyHandle), s)
-		} else {
-			k, err = client.LoadCachedKey(rwc, tpmutil.Handle(ts.keyHandle), nil)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to get key: %v", err)
-		}
-		defer k.Close()
-	}
-
 	config := &tpmjwt.TPMConfig{
-		TPMDevice: rwc,
-		Key:       k,
+		TPMDevice:        ts.tpmdevice,
+		AuthHandle:       ts.authHandle,
+		KeyID:            ts.keyId,
+		EncryptionHandle: ts.encryptionHandle,
+		EncryptionPub:    ts.encryptionPub,
 	}
 
 	keyctx, err := tpmjwt.NewTPMContext(ctx, config)
