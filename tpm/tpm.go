@@ -197,9 +197,9 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 			f, err := io.ReadAll(resp.Body)
 			defer resp.Body.Close()
 			if err != nil {
-				return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request %v", string(f))
+				return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request %v", err)
 			}
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Token Request error:, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Token Request error:, %s", string(f))
 		}
 
 		f, err := io.ReadAll(resp.Body)
