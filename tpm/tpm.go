@@ -30,7 +30,8 @@ const (
 type TpmTokenConfig struct {
 	TPMDevice        io.ReadWriteCloser
 	Email, Audience  string
-	AuthHandle       *tpm2.AuthHandle // load a key from handle
+	NamedHandle      tpm2.NamedHandle // load a key from handle
+	AuthSession      tpmjwt.Session
 	KeyId            string
 	Scopes           []string
 	UseOauthToken    bool
@@ -43,7 +44,8 @@ type tpmTokenSource struct {
 	refreshMutex     *sync.Mutex
 	email, audience  string
 	tpmdevice        io.ReadWriteCloser
-	authHandle       *tpm2.AuthHandle
+	namedHandle      tpm2.NamedHandle
+	authSession      tpmjwt.Session
 	keyId            string
 	scopes           []string
 	useOauthToken    bool
@@ -72,24 +74,25 @@ type ClaimWithSubject struct {
 // This TpmTokenSource will only work on platforms where the PrivateKey for the Service
 // Account is already loaded on the TPM previously and available via Persistent Handle.
 //
-//		TPMDevice (io.ReadWriteCloser): The device Handle for the TPM managed by the caller Use either TPMDevice or TPMPath
-//		Email (string): The service account to get the token for.
-//		Audience (string): The audience representing the service the token is valid for.
-//		    The audience must match the name of the Service the token is intended for.  See
-//		    documentation links above.
-//		    (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
-//		Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
-//		AuthHandle (*tpm2.AuthHandle): The pre-authorized key handle to use
-//		KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
-//		    This field is optional but recomended if  UseOauthTOken is false
-//		    Find the keyId associated with the service account by running:
-//		    `gcloud iam service-accounts keys list --iam-account=<email>``
-//		UseOauthToken (bool): Use oauth2 access_token (true) or JWTAccessToken (false)
-//	     see: https://developers.google.com/identity/protocols/oauth2/service-account#jwt-auth
-//	     eg: audience="https://pubsub.googleapis.com/google.pubsub.v1.Publisher"
+//			TPMDevice (io.ReadWriteCloser): The device Handle for the TPM managed by the caller Use either TPMDevice or TPMPath
+//			Email (string): The service account to get the token for.
+//			Audience (string): The audience representing the service the token is valid for.
+//			    The audience must match the name of the Service the token is intended for.  See
+//			    documentation links above.
+//			    (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
+//			Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
+//			NamedHandle (*tpm2.NameHandle): The key handle to use
+//	     Session: (go-tpm-jwt.Session): PCR or Password authorized session to use (github.com/salrashid123/golang-jwt-tpm)
+//			KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
+//			    This field is optional but recomended if  UseOauthTOken is false
+//			    Find the keyId associated with the service account by running:
+//			    `gcloud iam service-accounts keys list --iam-account=<email>``
+//			UseOauthToken (bool): Use oauth2 access_token (true) or JWTAccessToken (false)
+//		     see: https://developers.google.com/identity/protocols/oauth2/service-account#jwt-auth
+//		     eg: audience="https://pubsub.googleapis.com/google.pubsub.v1.Publisher"
 func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
-	if tokenConfig.AuthHandle == nil || tokenConfig.TPMDevice == nil {
+	if &tokenConfig.NamedHandle == nil || tokenConfig.TPMDevice == nil {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: KeyHandle and TPMDevice must be specified")
 	}
 
@@ -110,10 +113,11 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		email:            tokenConfig.Email,
 		audience:         tokenConfig.Audience,
 		tpmdevice:        tokenConfig.TPMDevice,
+		authSession:      tokenConfig.AuthSession,
 		keyId:            tokenConfig.KeyId,
 		scopes:           tokenConfig.Scopes,
 		useOauthToken:    tokenConfig.UseOauthToken,
-		authHandle:       tokenConfig.AuthHandle,
+		namedHandle:      tokenConfig.NamedHandle,
 		encryptionHandle: tokenConfig.EncryptionHandle,
 		encryptionPub:    tokenConfig.EncryptionPub,
 	}, nil
@@ -131,7 +135,8 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 	config := &tpmjwt.TPMConfig{
 		TPMDevice:        ts.tpmdevice,
-		AuthHandle:       ts.authHandle,
+		NamedHandle:      ts.namedHandle,
+		AuthSession:      ts.authSession,
 		KeyID:            ts.keyId,
 		EncryptionHandle: ts.encryptionHandle,
 		EncryptionPub:    ts.encryptionPub,
@@ -179,16 +184,21 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		data.Add("assertion", tokenString)
 
 		hreq, err := http.NewRequest(http.MethodPost, "https://accounts.google.com/o/oauth2/token", bytes.NewBufferString(data.Encode()))
-		hreq.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
 		if err != nil {
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to generate token Request, %v", err)
 		}
+		hreq.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
 		resp, err := client.Do(hreq)
 		if err != nil {
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request, %v", err)
 		}
 
 		if resp.StatusCode != http.StatusOK {
+			f, err := io.ReadAll(resp.Body)
+			defer resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request %v", string(f))
+			}
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Token Request error:, %v", err)
 		}
 

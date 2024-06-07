@@ -87,7 +87,7 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 
 printf '\x00\x00' > unique.dat
 tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
-
+# tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" 
 tpm2_import -C primary.ctx -G rsa2048:rsassa:null -g sha256 -i /tmp/key_rsa.pem -u key.pub -r key.prv
 tpm2_flushcontext -t
 tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
@@ -218,11 +218,9 @@ eg
 	// use it to get a tokensource 
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 		TPMDevice: rwc,
-		AuthHandle: &tpm2.AuthHandle{
-			//Handle: rsaKey.ObjectHandle, // from keyfile
+		NamedHandle: tpm2.NamedHandle{
 			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
 			Name:   pub.Name,
-			Auth:   tpm2.PasswordAuth(nil),
 		},
 		Email:         *serviceAccountEmail,
 		UseOauthToken: true,

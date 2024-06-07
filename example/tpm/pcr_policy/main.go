@@ -16,21 +16,22 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
+	tpmjwt "github.com/salrashid123/golang-jwt-tpm"
 	sal "github.com/salrashid123/oauth2/tpm"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 var (
-	tpmPath             = flag.String("tpm-path", "/dev/tpmrm0", "Path to the TPM device (character device or a Unix socket).")
-	persistentHandle    = flag.Uint("persistentHandle", 0x81010002, "Handle value")
+	tpmPath             = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
+	persistentHandle    = flag.Uint("persistentHandle", 0x81010003, "Handle value")
 	projectId           = flag.String("projectId", "core-eso", "ProjectID")
 	kf                  = flag.String("keyfile", "/tmp/svc_account_tpm.pem", "TPM Encrypted private key")
 	serviceAccountEmail = flag.String("serviceAccountEmail", "tpm-sa@core-eso.iam.gserviceaccount.com", "Email of the serviceaccount")
 	bucketName          = flag.String("bucketName", "core-eso-bucket", "Bucket name")
 	keyId               = flag.String("keyId", "71b831d149e4667809644840cda2e7e0080035d5", "GCP PRivate key id assigned.")
-
-	ECCSRK_H_Template = tpm2.TPMTPublic{
+	pcrs                = flag.Uint("pcrs", 23, "PCRs to use")
+	ECCSRK_H_Template   = tpm2.TPMTPublic{
 		Type:    tpm2.TPMAlgECC,
 		NameAlg: tpm2.TPMAlgSHA256,
 		ObjectAttributes: tpm2.TPMAObject{
@@ -103,71 +104,6 @@ func main() {
 
 	rwr := transport.FromReadWriter(rwc)
 
-	// log.Printf("======= oauth2 using keyfile ========")
-
-	// c, err := os.ReadFile(*kf)
-	// if err != nil {
-	// 	log.Fatalf("can't load keys %q: %v", *tpmPath, err)
-	// }
-	// key, err := keyfile.Decode(c)
-	// if err != nil {
-	// 	log.Fatalf("can't decode keys %q: %v", *tpmPath, err)
-	// }
-
-	// // specify its parent directly
-	// primaryKey, err := tpm2.CreatePrimary{
-	// 	PrimaryHandle: key.Parent,
-	// 	InPublic:      tpm2.New2B(ECCSRK_H_Template),
-	// }.Execute(rwr)
-	// if err != nil {
-	// 	log.Fatalf("can't create primary %q: %v", *tpmPath, err)
-	// }
-
-	// defer func() {
-	// 	flushContextCmd := tpm2.FlushContext{
-	// 		FlushHandle: primaryKey.ObjectHandle,
-	// 	}
-	// 	_, _ = flushContextCmd.Execute(rwr)
-	// }()
-
-	// // now the actual key can get loaded from that parent
-	// rsaKey, err := tpm2.Load{
-	// 	ParentHandle: tpm2.AuthHandle{
-	// 		Handle: primaryKey.ObjectHandle,
-	// 		Name:   tpm2.TPM2BName(primaryKey.Name),
-	// 		Auth:   tpm2.PasswordAuth([]byte("")),
-	// 	},
-	// 	InPublic:  key.Pubkey,
-	// 	InPrivate: key.Privkey,
-	// }.Execute(rwr)
-	// if err != nil {
-	// 	log.Fatalf("can't load  rsaKey : %v", err)
-	// }
-
-	// defer func() {
-	// 	flushContextCmd := tpm2.FlushContext{
-	// 		FlushHandle: rsaKey.ObjectHandle,
-	// 	}
-	// 	_, _ = flushContextCmd.Execute(rwr)
-	// }()
-	// pub, err := tpm2.ReadPublic{
-	// 	ObjectHandle: tpm2.TPMHandle(rsaKey.ObjectHandle), // keyfile
-	// }.Execute(rwr)
-	// if err != nil {
-	// 	log.Fatalf("error executing tpm2.ReadPublic %v", err)
-	// }
-
-	// ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-	// 	TPMDevice: rwc,
-	// 	AuthHandle: &tpm2.AuthHandle{
-	// 		Handle: rsaKey.ObjectHandle, // from keyfile
-	// 		Name:   pub.Name,
-	// 		Auth:   tpm2.PasswordAuth(nil),
-	// 	},
-	// 	Email:         *serviceAccountEmail,
-	// 	UseOauthToken: true,
-	// })
-
 	// log.Printf("======= oauth2 end using persistent handle ========")
 	//
 	pub, err := tpm2.ReadPublic{
@@ -177,13 +113,22 @@ func main() {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
 	}
 
+	p, err := tpmjwt.NewPCRSession(rwr, []tpm2.TPMSPCRSelection{
+		{
+			Hash:      tpm2.TPMAlgSHA256,
+			PCRSelect: tpm2.PCClientCompatible.PCRs(23),
+		},
+	})
+	if err != nil {
+		log.Fatalf("Error configuring PCR session: %v", err)
+	}
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 		TPMDevice: rwc,
-		AuthHandle: &tpm2.AuthHandle{
+		NamedHandle: tpm2.NamedHandle{
 			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
 			Name:   pub.Name,
-			Auth:   tpm2.PasswordAuth(nil),
 		},
+		AuthSession:   p,
 		Email:         *serviceAccountEmail,
 		UseOauthToken: true,
 	})
