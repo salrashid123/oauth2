@@ -6,6 +6,9 @@ package google
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +18,9 @@ import (
 	"sync"
 	"time"
 
-	awscred "github.com/aws/aws-sdk-go/aws/credentials"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/aws"
+
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"golang.org/x/oauth2"
 )
 
@@ -37,7 +41,7 @@ type sTSOptions struct {
 }
 
 type AwsTokenConfig struct {
-	AwsCredential        awscred.Credentials
+	CredentialsProvider  *aws.CredentialsProvider
 	Scopes               []string
 	TargetResource       string
 	Region               string
@@ -54,6 +58,8 @@ const (
 	GCP_STS_ENDPOINT         = "https://sts.googleapis.com/v1/token"
 	AWS_STS_ENDPOINT         = "https://sts.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15"
 	GCP_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+
+	defaultVersion = "2011-06-15"
 )
 
 // AWSTokenSource exchanges AWS credentials for GCP credentials
@@ -63,8 +69,7 @@ const (
 //
 //  For more information, see:  https://github.com/salrashid123/gcpcompat-aws
 //
-//  AwsCredential (aws.Credential): The root AWS Credential to use.  Maybe either a direct user
-//     user credential or one derived through AssumeRole
+//  CredentialsProvider (aws.CredentialsProvider): The root AWS Credential source to use
 //  Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
 //  TargetResource (string): Full GCP URI of the workload identity pool.  eg
 //     "//iam.googleapis.com/projects/1071284184436/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
@@ -77,7 +82,7 @@ const (
 
 func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 
-	if &tokenConfig.AwsCredential == nil {
+	if &tokenConfig.CredentialsProvider == nil {
 		return nil, fmt.Errorf("oauth2/google: AwsCredential cannot be nil")
 	}
 
@@ -86,7 +91,7 @@ func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 	}
 	return &awsTokenSource{
 		refreshMutex:         &sync.Mutex{},
-		rootSource:           &tokenConfig.AwsCredential,
+		rootSource:           *tokenConfig.CredentialsProvider,
 		scopes:               tokenConfig.Scopes,
 		targetResource:       tokenConfig.TargetResource,
 		region:               tokenConfig.Region,
@@ -99,7 +104,7 @@ type awsTokenSource struct {
 	refreshMutex         *sync.Mutex
 	scopes               []string
 	targetResource       string
-	rootSource           *awscred.Credentials
+	rootSource           aws.CredentialsProvider
 	targetTokenSource    *oauth2.Token
 	region               string
 	targetServiceAccount string
@@ -112,47 +117,38 @@ func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
 
 	if ts.targetTokenSource.Valid() {
 		return ts.targetTokenSource, nil
-	} else if ts.rootSource.IsExpired() {
-		_, err := ts.rootSource.Get()
-		if err != nil {
-			return nil, fmt.Errorf(" Could not refresh AWS Credentials %v", err)
-		}
+	}
+
+	rr, err := ts.rootSource.Retrieve(context.Background())
+	if err != nil {
+		return nil, err
 	}
 
 	body := strings.NewReader("")
 
-	signer := v4.NewSigner(ts.rootSource)
+	signer := v4.NewSigner()
 	req, err := http.NewRequest(http.MethodPost, AWS_STS_ENDPOINT, body)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to generate AWS STS POST request %v", err)
+		return nil, err
 	}
-
 	req.Header.Add("x-goog-cloud-target-resource", ts.targetResource)
-
-	cv, err := ts.rootSource.Get()
+	postForm := url.Values{}
+	hasher := sha256.New()
+	_, err = hasher.Write([]byte(postForm.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("Unable to generate AWS STS POST request %v", err)
+		return nil, err
 	}
+	postPayloadHash := hex.EncodeToString(hasher.Sum(nil))
+	ctx := context.Background()
 
-	if cv.SessionToken != "" {
-		req.Header.Add("x-amz-security-token", cv.SessionToken)
-	}
-
-	_, err = signer.Sign(req, body, "sts", ts.region, time.Now())
+	err = signer.SignHTTP(ctx, rr, req, postPayloadHash, "sts", ts.region, time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("Unable to generate AWS Signature %v", err)
+		return nil, err
 	}
-
-	// log.Printf("Signed Authorization header: %s\n", req.Header.Get("Authorization"))
-	// log.Printf("Signed x-amz-date header: %s\n", req.Header.Get("x-amz-date"))
-	// log.Printf("Signed x-amz-security-token: %s\n", req.Header.Get("x-amz-security-token"))
-	// log.Printf("Signed host header: %s\n", req.Host)
-	// log.Printf("Signed x-goog-cloud-target-resource header: %s\n", req.Header.Get("x-goog-cloud-target-resource"))
-	// log.Printf("Signed request method: %s\n", req.Method)
 
 	var subjectToken = &sTSOptions{}
 
-	if cv.SessionToken != "" {
+	if rr.SessionToken != "" {
 		subjectToken = &sTSOptions{
 			Headers: []sTSHeaders{
 				{Key: "host", Value: req.Host},
@@ -180,21 +176,21 @@ func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
 	e, err := json.Marshal(subjectToken)
 	if err != nil {
 		fmt.Println(err)
-		return nil, fmt.Errorf("Unable to Unmarshall SubjectToken %v", err)
+		return nil, fmt.Errorf("unable to Unmarshall SubjectToken %v", err)
 	}
 
-	form := url.Values{}
-	form.Add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
-	form.Add("audience", ts.targetResource)
-	form.Add("subject_token_type", "urn:ietf:params:aws:token-type:aws4_request")
-	form.Add("requested_token_type", "urn:ietf:params:oauth:token-type:access_token")
-	form.Add("scope", strings.Join(ts.scopes, " "))
-	form.Add("subject_token", string(e))
+	gform := url.Values{}
+	gform.Add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	gform.Add("audience", ts.targetResource)
+	gform.Add("subject_token_type", "urn:ietf:params:aws:token-type:aws4_request")
+	gform.Add("requested_token_type", "urn:ietf:params:oauth:token-type:access_token")
+	gform.Add("scope", strings.Join(ts.scopes, " "))
+	gform.Add("subject_token", string(e))
 
-	gcpSTSResp, err := http.PostForm(GCP_STS_ENDPOINT, form)
+	gcpSTSResp, err := http.PostForm(GCP_STS_ENDPOINT, gform)
 	defer gcpSTSResp.Body.Close()
 	if err != nil {
-		return nil, fmt.Errorf("Error exchaning token for GCP STS %v", err)
+		return nil, fmt.Errorf("error exchaning token for GCP STS %v", err)
 	}
 
 	if gcpSTSResp.StatusCode != http.StatusOK {
@@ -207,7 +203,7 @@ func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
 	tresp := &sTSTokenResponse{}
 	err = json.NewDecoder(gcpSTSResp.Body).Decode(tresp)
 	if err != nil {
-		return nil, fmt.Errorf("Error Decoding GCP STS TokenResponse %v", err)
+		return nil, err
 	}
 
 	ts.targetTokenSource = &oauth2.Token{
@@ -222,24 +218,28 @@ func (ts *awsTokenSource) Token() (*oauth2.Token, error) {
 
 	iamEndpoint := fmt.Sprintf("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken", ts.targetServiceAccount)
 
-	var jsonStr = []byte(fmt.Sprintf(`{"scope": ["%s"] }`, ts.scope))
+	var jsonStr = []byte(fmt.Sprintf(`{"scope": ["%s"] }`, strings.Join(ts.scopes, " ")))
 	req, err = http.NewRequest(http.MethodPost, iamEndpoint, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return nil, err
+	}
+
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ts.targetTokenSource.AccessToken))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
 	client := &http.Client{}
 	ttresp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Error invoking IAM Credentials API %v", err)
+		return nil, fmt.Errorf("error invoking IAM Credentials API %v", err)
 	}
 	defer ttresp.Body.Close()
 
 	if ttresp.StatusCode != http.StatusOK {
 		bodyBytes, err := io.ReadAll(ttresp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("Error reading IAM Credentials response body %v", err)
+			return nil, fmt.Errorf("error reading IAM Credentials response body %v", err)
 		}
-		return nil, fmt.Errorf("Error invoking IAM Credentials API: [%s] \n %v", string(bodyBytes), err)
+		return nil, fmt.Errorf("error invoking IAM Credentials API: [%s] \n %v", string(bodyBytes), err)
 	}
 
 	target := &iamGenerateAccessTokenResponse{}

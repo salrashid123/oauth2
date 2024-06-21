@@ -4,11 +4,27 @@
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
-* **Vault**: `access_token` derived from a [HashiCorp Vault](https://www.vaultproject.io/) TOKEN using [Google Cloud Secrets Engine](https://www.vaultproject.io/docs/secrets/gcp/index.html)
 * **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials
 
 
 > NOTE: This is NOT supported by Google
+
+---
+
+## Additional References
+
+**TPM**
+
+  * [TPM Credential Source for Google Cloud SDK](https://github.com/salrashid123/gcp-adc-tpm)
+  * [PKCS-11 Credential Source for Google Cloud SDK](https://github.com/salrashid123/gcp-adc-pkcs)
+  * [golang-jwt for Trusted Platform Module (TPM)](https://github.com/salrashid123/golang-jwt-tpm)
+  * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
+  * [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
+
+**AWS**
+  * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
+  * [AWS Process Credentials for Trusted Platform Module (TPM)](https://github.com/salrashid123/aws-tpm-process-credential)
+  * [AWS Process Credentials for Hardware Security Module (HSM) with PKCS11](https://github.com/salrashid123/aws-pkcs-process-credential)
 
 ---
 
@@ -239,7 +255,7 @@ If you want to enable [TPM Session Encryption](https://github.com/salrashid123/t
 
 ---
 
-## Usage AWS
+### Usage AWS
 
 This credential type exchanges an AWS Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws) and utilizes
 [GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
@@ -253,56 +269,65 @@ Sample usage
 
 ```golang
 	// with static credentials 
-	// you can use **any other credential sorce for the TPM
-	AWS_ACCESS_KEY_ID := "AKIAUH3H6EGKBUQOZ2DT"
-	AWS_SECRET_ACCESS_KEY := "lIs1yCocQYKX+ertfrsS--redacted"
-	creds := credentials.NewStaticCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "")
+	// you can use **any other credential valid for aws
+	//  for example, you can export env vars aws understands by default and then run this app
+	//     export AWS_ACCESS_KEY_ID="AKIAUH3H6EGKBUQOZ2DT"
+	//     export AWS_SECRET_ACCESS_KEY="lIs1yCocQYKX+ertfrsS--redacted"
 
-	awsTokenSource, err := sal.AWSTokenSource(
+	// for the following, the IAM binding on "aws-federated@core-eso.iam.gserviceaccount.com" includes
+	//  	principal://iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/subject/arn:aws:iam::291738886548:user/svcacct1
+	//   in the Workload Identity User  role
+
+	cfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"))
+	ts, err := sal.AWSTokenSource(
 		&sal.AwsTokenConfig{
-			AwsCredential:        *creds,
-			Scope:                "https://www.googleapis.com/auth/cloud-platform",
+			CredentialsProvider:  &cfg.Credentials,
+			Scopes:               []string{"https://www.googleapis.com/auth/cloud-platform"},
 			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
 			Region:               "us-east-1",
 			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
 			UseIAMToken:          true,
 		},
 	)
+
 	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
 ```
 
+or use 	`AssumeRole`
+
+```golang
+	// // using AssumeRole credential source
+	// for the following, the IAM binding on "aws-federated@core-eso.iam.gserviceaccount.com" includes
+	//  	principal://iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/subject/arn:aws:sts::291738886548:assumed-role/gcpsts/mysession
+	//   in the Workload Identity User  role
+
+	scfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"))
+
+	stsSvc := sts.NewFromConfig(scfg)
+	cp := stscreds.NewAssumeRoleProvider(stsSvc, "arn:aws:iam::291738886548:role/gcpsts", func(p *stscreds.AssumeRoleOptions) {
+		p.RoleSessionName = "mysession"
+	})
+	cfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"), ac.WithCredentialsProvider(cp))
+
+	ts, err := sal.AWSTokenSource(
+		&sal.AwsTokenConfig{
+			CredentialsProvider:  &cfg.Credentials,
+			Scopes:               []string{"https://www.googleapis.com/auth/cloud-platform"},
+			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
+			Region:               "us-east-1",
+			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
+			UseIAMToken:          true,
+		},
+	)
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))	
+```
+
+For an end-to-end demo, see the `examples/aws` folder
+
 ---
 
-## Usage VaultTokenSource
 
-`VaultTokenSource` provides a google cloud credential and tokenSource derived from a `VAULT_TOKEN`.
-
-Vault must be configure first to return a valid `access_token` with appropriate permissions on the resource being accessed on GCP.
-
-For more information, see [Vault access_token for GCP](https://www.vaultproject.io/docs/secrets/gcp/index.html#access-tokens) and specific implementation [here](https://github.com/salrashid123/vault_gcp#accesstoken)
-
-
-For an end-to-end example, see
-
-* [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
-
-
-## Usage STS
-
-To use this tokensource, you need to have any token you can exchange with an STS server. Basically, you exchange one token for a google oauth2 token via an STS server
-
-This tokensource was moved to:
-
-- [https://github.com/salrashid123/sts](https://github.com/salrashid123/sts)
-
-also see:
-
-- [https://tools.ietf.org/html/rfc8693](https://tools.ietf.org/html/rfc8693)
-- [https://github.com/salrashid123/sts_server](https://github.com/salrashid123/sts_server)
-
-
-
-## Usage DummyTokenSource
+### Usage DummyTokenSource
 
 To use this tokensource, just specify the list of tokens to return and the interval to rotate/expire the current one.
 
@@ -324,19 +349,3 @@ The `YubikeyTokenSource` can be found in a different repo [https://github.com/sa
 
 ---
 
-## Additional References
-
-**TPM**
-
-  * [golang-jwt for Trusted Platform Module (TPM)](https://github.com/salrashid123/golang-jwt-tpm)
-  * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
-  * [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
-  * [Trusted Platform Module (TPM) and Google Cloud KMS based mTLS auth to HashiCorp Vault](https://github.com/salrashid123/vault_mtls_tpm)
-
-**Vault**
-  * [Google Credentials from VAULT_TOKEN](https://github.com/salrashid123/vault_gcp_credentials)
-  * [Vault auth and secrets on GCP](https://github.com/salrashid123/vault_gcp)
-  * [Vault Kubernetes Auth with Minikube](https://github.com/salrashid123/minikube_vault)
-
-**AWS**
-  * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
