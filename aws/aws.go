@@ -101,6 +101,7 @@ func AWSTokenSource(tokenConfig *AwsTokenConfig) (oauth2.TokenSource, error) {
 }
 
 type awsTokenSource struct {
+	oauth2.TokenSource
 	refreshMutex         *sync.Mutex
 	scopes               []string
 	targetResource       string

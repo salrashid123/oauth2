@@ -147,7 +147,6 @@ The following uses `tpm2_tools` but is pretty straightfoward to do the same step
 tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
 tpm2_create -G rsa2048:rsassa:null -g sha256 -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
-# tpm2_evictcontrol -C o -c 0x81010002
 tpm2_evictcontrol -C o -c key.ctx 0x81010002
 tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
 ```
@@ -268,6 +267,12 @@ This credential type exchanges an AWS Credential for a GCP credential.  The spec
 Sample usage
 
 ```golang
+import (
+	"cloud.google.com/go/storage"
+	ac "github.com/aws/aws-sdk-go-v2/config"
+	sal "github.com/salrashid123/oauth2/aws"
+)
+
 	// with static credentials 
 	// you can use **any other credential valid for aws
 	//  for example, you can export env vars aws understands by default and then run this app
@@ -279,6 +284,7 @@ Sample usage
 	//   in the Workload Identity User  role
 
 	cfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"))
+
 	ts, err := sal.AWSTokenSource(
 		&sal.AwsTokenConfig{
 			CredentialsProvider:  &cfg.Credentials,
@@ -296,6 +302,13 @@ Sample usage
 or use 	`AssumeRole`
 
 ```golang
+import (
+	"cloud.google.com/go/storage"
+	ac "github.com/aws/aws-sdk-go-v2/config"
+	sal "github.com/salrashid123/oauth2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/sts"	
+)
 	// // using AssumeRole credential source
 	// for the following, the IAM binding on "aws-federated@core-eso.iam.gserviceaccount.com" includes
 	//  	principal://iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/subject/arn:aws:sts::291738886548:assumed-role/gcpsts/mysession

@@ -41,7 +41,8 @@ type TpmTokenConfig struct {
 }
 
 type tpmTokenSource struct {
-	refreshMutex     *sync.Mutex
+	refreshMutex *sync.Mutex
+	oauth2.TokenSource
 	email, audience  string
 	tpmdevice        io.ReadWriteCloser
 	namedHandle      tpm2.NamedHandle
