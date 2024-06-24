@@ -4,8 +4,7 @@
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
-* **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials
-
+* **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials.
 
 > NOTE: This is NOT supported by Google
 
@@ -263,6 +262,8 @@ This credential type exchanges an AWS Credential for a GCP credential.  The spec
 
 - For GCP->AWS credential exchange, see [AWSCompat](https://github.com/salrashid123/awscompat)
 
+
+>> **Note**: this library is an alternative to the recently added [here](https://issuetracker.google.com/issues/238911014#comment33).  For a concerte example in go, see [example](https://gist.github.com/salrashid123/295079ac9a7452e774051b0e1a192b1d)
 
 Sample usage
 
