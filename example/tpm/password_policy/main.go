@@ -123,9 +123,8 @@ func main() {
 			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
 			Name:   pub.Name,
 		},
-		AuthSession:   se,
-		Email:         *serviceAccountEmail,
-		UseOauthToken: true,
+		AuthSession: se,
+		Email:       *serviceAccountEmail,
 	})
 	if err != nil {
 		log.Fatal(err)

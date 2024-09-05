@@ -33,10 +33,9 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 for a simple end-to-end, see [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
 
 
-There are two types of tokens this TokenSource fulfills:
+The types of tokens this TokenSource fulfills:
 
-- `JWTAccessToken`
-- `Oauth2 access_tokens`.
+- [Self-signed JWT with Scopes](https://google.aip.dev/auth/4111)
 
 
 ### Usage
@@ -210,7 +209,8 @@ note, there are also several ways to securely transfer public/private keys betwe
 	The TPM based `TokenSource` can now be used to access a GCP resource using either a plain HTTPClient or _native_ GCP library (`google-cloud-pubsub`)!!
 
 ```bash
-	 go run main.go --projectId=core-eso \
+cd example/tpm/
+	 go run no_policy/main.go --projectId=core-eso \
 	   --persistentHandle=0x81010002 \
 	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \
 		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
@@ -237,7 +237,6 @@ eg
 			Name:   pub.Name,
 		},
 		Email:         *serviceAccountEmail,
-		UseOauthToken: true,
 	})
 
 	// use it with a gcp api client

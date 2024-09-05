@@ -164,11 +164,10 @@ func main() {
 	// 		Name:   pub.Name,
 	// 	},
 	// 	Email:         *serviceAccountEmail,
-	// 	UseOauthToken: true,
 	// })
 
-	// log.Printf("======= oauth2 end using persistent handle ========")
-	//
+	log.Printf("======= oauth2 end using persistent handle ========")
+
 	pub, err := tpm2.ReadPublic{
 		ObjectHandle: tpm2.TPMHandle(*persistentHandle), //persistent handle
 	}.Execute(rwr)
@@ -182,8 +181,7 @@ func main() {
 			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
 			Name:   pub.Name,
 		},
-		Email:         *serviceAccountEmail,
-		UseOauthToken: true,
+		Email: *serviceAccountEmail,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -199,21 +197,20 @@ func main() {
 
 		ctx := context.Background()
 
-		// GCS does not support JWTAccessTokens, the following will only work if UseOauthToken is set to True
 		storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
 		if err != nil {
 			log.Fatal(err)
 		}
 		sit := storageClient.Buckets(ctx, *projectId)
 		for {
-			_, err := sit.Next()
+			battrs, err := sit.Next()
 			if err == iterator.Done {
 				break
 			}
 			if err != nil {
 				log.Fatal(err)
 			}
-			//log.Printf(battrs.Name)
+			log.Printf(battrs.Name)
 		}
 		i = i + 1
 		log.Printf("%d\n", i)
