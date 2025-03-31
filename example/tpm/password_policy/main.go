@@ -106,23 +106,13 @@ func main() {
 
 	// log.Printf("======= oauth2 end using persistent handle ========")
 	//
-	pub, err := tpm2.ReadPublic{
-		ObjectHandle: tpm2.TPMHandle(*persistentHandle), //persistent handle
-	}.Execute(rwr)
-	if err != nil {
-		log.Fatalf("error executing tpm2.ReadPublic %v", err)
-	}
-
 	se, err := tpmjwt.NewPasswordSession(rwr, []byte(*keyPass))
 	if err != nil {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
 	}
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-		TPMDevice: rwc,
-		NamedHandle: tpm2.NamedHandle{
-			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
-			Name:   pub.Name,
-		},
+		TPMDevice:   rwc,
+		Handle:      tpm2.TPMHandle(*persistentHandle), // persistent handle
 		AuthSession: se,
 		Email:       *serviceAccountEmail,
 	})

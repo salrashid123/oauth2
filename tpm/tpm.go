@@ -26,13 +26,11 @@ const (
 type TpmTokenConfig struct {
 	TPMDevice        io.ReadWriteCloser
 	Email            string
-	NamedHandle      tpm2.NamedHandle // load a key from handle
+	Handle           tpm2.TPMHandle // load a key from handle
 	AuthSession      tpmjwt.Session
 	KeyId            string
 	Scopes           []string
-	EncryptionHandle tpm2.TPMHandle   // (optional) handle to use for transit encryption
-	EncryptionPub    *tpm2.TPMTPublic // (optional) public key to use for transit encryption
-
+	EncryptionHandle tpm2.TPMHandle // (optional) handle to use for transit encryption
 }
 
 type tpmTokenSource struct {
@@ -40,14 +38,12 @@ type tpmTokenSource struct {
 	oauth2.TokenSource
 	email            string
 	tpmdevice        io.ReadWriteCloser
-	namedHandle      tpm2.NamedHandle
+	handle           tpm2.TPMHandle
 	authSession      tpmjwt.Session
 	keyId            string
 	scopes           []string
 	myToken          *oauth2.Token
-	encryptionHandle tpm2.TPMHandle   // (optional) handle to use for transit encryption
-	encryptionPub    *tpm2.TPMTPublic // (optional) public key to use for transit encryption
-
+	encryptionHandle tpm2.TPMHandle // (optional) handle to use for transit encryption
 }
 
 type rtokenJSON struct {
@@ -84,7 +80,7 @@ type ClaimWithSubject struct {
 //			    `gcloud iam service-accounts keys list --iam-account=<email>``
 func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
-	if &tokenConfig.NamedHandle == nil || tokenConfig.TPMDevice == nil {
+	if &tokenConfig.Handle == nil || tokenConfig.TPMDevice == nil {
 		return nil, fmt.Errorf("salrashid123/x/oauth2/google: KeyHandle and TPMDevice must be specified")
 	}
 
@@ -103,9 +99,8 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		authSession:      tokenConfig.AuthSession,
 		keyId:            tokenConfig.KeyId,
 		scopes:           tokenConfig.Scopes,
-		namedHandle:      tokenConfig.NamedHandle,
+		handle:           tokenConfig.Handle,
 		encryptionHandle: tokenConfig.EncryptionHandle,
-		encryptionPub:    tokenConfig.EncryptionPub,
 	}, nil
 
 }
@@ -121,11 +116,10 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 	config := &tpmjwt.TPMConfig{
 		TPMDevice:        ts.tpmdevice,
-		NamedHandle:      ts.namedHandle,
+		Handle:           ts.handle,
 		AuthSession:      ts.authSession,
 		KeyID:            ts.keyId,
 		EncryptionHandle: ts.encryptionHandle,
-		EncryptionPub:    ts.encryptionPub,
 	}
 
 	keyctx, err := tpmjwt.NewTPMContext(ctx, config)

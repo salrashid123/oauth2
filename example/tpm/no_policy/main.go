@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
-	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/oauth2/tpm"
 	"google.golang.org/api/iterator"
@@ -101,8 +100,6 @@ func main() {
 		}
 	}()
 
-	rwr := transport.FromReadWriter(rwc)
-
 	// log.Printf("======= oauth2 using keyfile ========")
 
 	// c, err := os.ReadFile(*kf)
@@ -159,29 +156,16 @@ func main() {
 
 	// ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 	// 	TPMDevice: rwc,
-	// 	NamedHandle: &tpm2.NamedHandle{
-	// 		Handle: rsaKey.ObjectHandle, // from keyfile
-	// 		Name:   pub.Name,
-	// 	},
+	//  Handle: rsaKey.ObjectHandle, // from keyfile
 	// 	Email:         *serviceAccountEmail,
 	// })
 
 	log.Printf("======= oauth2 end using persistent handle ========")
 
-	pub, err := tpm2.ReadPublic{
-		ObjectHandle: tpm2.TPMHandle(*persistentHandle), //persistent handle
-	}.Execute(rwr)
-	if err != nil {
-		log.Fatalf("error executing tpm2.ReadPublic %v", err)
-	}
-
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 		TPMDevice: rwc,
-		NamedHandle: tpm2.NamedHandle{
-			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
-			Name:   pub.Name,
-		},
-		Email: *serviceAccountEmail,
+		Handle:    tpm2.TPMHandle(*persistentHandle), // persistent handle
+		Email:     *serviceAccountEmail,
 	})
 	if err != nil {
 		log.Fatal(err)

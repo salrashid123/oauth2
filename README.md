@@ -222,20 +222,11 @@ eg
 
 	// open the tpm
 	rwc, err := OpenTPM(*tpmPath)
-	rwr := transport.FromReadWriter(rwc)
-
-	// acquire the key handle on the tpm
-	pub, err := tpm2.ReadPublic{
-		ObjectHandle: tpm2.TPMHandle(*persistentHandle), //persistent handle
-	}.Execute(rwr)
 
 	// use it to get a tokensource 
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 		TPMDevice: rwc,
-		NamedHandle: tpm2.NamedHandle{
-			Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
-			Name:   pub.Name,
-		},
+		Handle: tpm2.TPMHandle(*persistentHandle), // persistent handle
 		Email:         *serviceAccountEmail,
 	})
 
