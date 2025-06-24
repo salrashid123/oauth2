@@ -12,7 +12,14 @@ Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSour
 *BREAKING CHANGE*
 
 * removed AWS oauth provider (nobody's using it AFAIK)
-* refactor it to top-level package `github.com/salrashid123/oauth2` for simplicity
+* refactor it to top-level package `github.com/salrashid123/oauth2/v3` for simplicity
+
+
+```golang
+import (
+	sal "github.com/salrashid123/oauth2/v3"
+)
+```
 
 ---
 
