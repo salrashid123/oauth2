@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./tpm    
+        working-directory: tpm    
     steps:
       - name: Check out code
         uses: actions/checkout@v4
