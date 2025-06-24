@@ -16,7 +16,7 @@ import (
 	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpmutil"
 	tpmjwt "github.com/salrashid123/golang-jwt-tpm"
-	sal "github.com/salrashid123/oauth2/tpm/v3"
+	sal "github.com/salrashid123/oauth2/v3"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
