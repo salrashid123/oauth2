@@ -1,16 +1,18 @@
 
-# TPM and AWS based Google Cloud Credential Access Token 
+# TPM based Google Cloud Credential Access Token 
 
-Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
+Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud where the private key is encoded into a TPM. 
 
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
   *  `TPM based key" --> "GCP AccessToken`
 
-* **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from an AWS-SDK `AWSCredentials`.
-  * `AWS SDK Go Credential` --> `GCP AccessToken`. 
-  *  GCP [Workfload Federation](https://cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds) also allows you to exchange AWS for GCP Credentials but this library allows you to specify an arbitrary AWSCredential in code dynamically while workload federation requires a GCP-centric config file and environment variable.
-
 > NOTE: This is NOT supported by Google
+
+
+*BREAKING CHANGE*
+
+* removed AWS oauth provider (nobody's using it AFAIK)
+* refactor it to top-level package `github.com/salrashid123/oauth2` for simplicity
 
 ---
 
@@ -23,11 +25,6 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
   * [golang-jwt for Trusted Platform Module (TPM)](https://github.com/salrashid123/golang-jwt-tpm)
   * [TPM2-TSS-Engine hello world and Google Cloud Authentication](https://github.com/salrashid123/tpm2_evp_sign_decrypt)
   * [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
-
-**AWS**
-  * [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws)
-  * [AWS Process Credentials for Trusted Platform Module (TPM)](https://github.com/salrashid123/aws-tpm-process-credential)
-  * [AWS Process Credentials for Hardware Security Module (HSM) with PKCS11](https://github.com/salrashid123/aws-pkcs-process-credential)
 
 ---
 
@@ -247,96 +244,3 @@ If you want to enable [TPM Session Encryption](https://github.com/salrashid123/t
 ```
 
 ---
-
-## Usage AWS
-
-This credential type exchanges an AWS Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws) and utilizes
-[GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
-
-- For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-aws)
-
-- For GCP->AWS credential exchange, see [AWSCompat](https://github.com/salrashid123/awscompat)
-
-Sample usage
-
-```golang
-import (
-	"cloud.google.com/go/storage"
-	ac "github.com/aws/aws-sdk-go-v2/config"
-	sal "github.com/salrashid123/oauth2/aws"
-)
-
-	// with static credentials 
-	// you can use **any other credential valid for aws
-	//  for example, you can export env vars aws understands by default and then run this app
-	//     export AWS_ACCESS_KEY_ID="AKIAUH3H6EGKBUQOZ2DT"
-	//     export AWS_SECRET_ACCESS_KEY="lIs1yCocQYKX+ertfrsS--redacted"
-
-	// for the following, the IAM binding on "aws-federated@core-eso.iam.gserviceaccount.com" includes
-	//  	principal://iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/subject/arn:aws:iam::291738886548:user/svcacct1
-	//   in the Workload Identity User  role
-
-	cfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"))
-
-	ts, err := sal.AWSTokenSource(
-		&sal.AwsTokenConfig{
-			CredentialsProvider:  &cfg.Credentials,
-			Scopes:               []string{"https://www.googleapis.com/auth/cloud-platform"},
-			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
-			Region:               "us-east-1",
-			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
-			UseIAMToken:          true,
-		},
-	)
-
-	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))
-```
-
-or use 	`AssumeRole`
-
-```golang
-import (
-	"cloud.google.com/go/storage"
-	ac "github.com/aws/aws-sdk-go-v2/config"
-	sal "github.com/salrashid123/oauth2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
-	"github.com/aws/aws-sdk-go-v2/service/sts"	
-)
-	// // using AssumeRole credential source
-	// for the following, the IAM binding on "aws-federated@core-eso.iam.gserviceaccount.com" includes
-	//  	principal://iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/subject/arn:aws:sts::291738886548:assumed-role/gcpsts/mysession
-	//   in the Workload Identity User  role
-
-	scfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"))
-
-	stsSvc := sts.NewFromConfig(scfg)
-	cp := stscreds.NewAssumeRoleProvider(stsSvc, "arn:aws:iam::291738886548:role/gcpsts", func(p *stscreds.AssumeRoleOptions) {
-		p.RoleSessionName = "mysession"
-	})
-	cfg, err := ac.LoadDefaultConfig(context.Background(), ac.WithRegion("us-east-1"), ac.WithCredentialsProvider(cp))
-
-	ts, err := sal.AWSTokenSource(
-		&sal.AwsTokenConfig{
-			CredentialsProvider:  &cfg.Credentials,
-			Scopes:               []string{"https://www.googleapis.com/auth/cloud-platform"},
-			TargetResource:       "//iam.googleapis.com/projects/995081019036/locations/global/workloadIdentityPools/aws-pool-1/providers/aws-provider-1",
-			Region:               "us-east-1",
-			TargetServiceAccount: "aws-federated@core-eso.iam.gserviceaccount.com",
-			UseIAMToken:          true,
-		},
-	)
-	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(awsTokenSource))	
-```
-
-For an end-to-end demo, see the `examples/aws` folder
-
----
-
-
-### Usage YubiKeyTokenSource
-
-The `YubikeyTokenSource` can be found in a different repo [https://github.com/salrashid123/yubikey](https://github.com/salrashid123/yubikey)
-
-
----
-

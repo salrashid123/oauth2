@@ -4,15 +4,14 @@ go 1.24.0
 
 require (
 	cloud.google.com/go/storage v1.40.0
-	github.com/foxboron/go-tpm-keyfiles v0.0.0-20250323135004-b31fac66206e
-	github.com/google/go-tpm v0.9.3
+	github.com/google/go-tpm v0.9.5
 	github.com/google/go-tpm-tools v0.4.5
 	github.com/salrashid123/golang-jwt-tpm v1.8.9
-	github.com/salrashid123/oauth2/tpm v0.0.0
+	github.com/salrashid123/oauth2 v0.0.0
 	google.golang.org/api v0.172.0
 )
 
-replace github.com/salrashid123/oauth2/tpm => ../../tpm
+replace github.com/salrashid123/oauth2 => ../
 
 require (
 	cloud.google.com/go v0.112.1 // indirect
@@ -36,7 +35,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.30.0 // indirect
-	golang.org/x/oauth2 v0.28.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect

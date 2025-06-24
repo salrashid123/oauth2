@@ -22,55 +22,14 @@ import (
 )
 
 var (
-	tpmPath             = flag.String("tpm-path", "/dev/tpmrm0", "Path to the TPM device (character device or a Unix socket).")
-	persistentHandle    = flag.Uint("persistentHandle", 0x81010004, "Handle value")
+	tpmPath             = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
+	persistentHandle    = flag.Uint("persistentHandle", 0x81010003, "Handle value")
 	projectId           = flag.String("projectId", "core-eso", "ProjectID")
 	kf                  = flag.String("keyfile", "/tmp/svc_account_tpm.pem", "TPM Encrypted private key")
 	serviceAccountEmail = flag.String("serviceAccountEmail", "tpm-sa@core-eso.iam.gserviceaccount.com", "Email of the serviceaccount")
 	bucketName          = flag.String("bucketName", "core-eso-bucket", "Bucket name")
 	keyId               = flag.String("keyId", "71b831d149e4667809644840cda2e7e0080035d5", "GCP PRivate key id assigned.")
-	keyPass             = flag.String("keyPass", "testpwd", "KeyPassword")
-	ECCSRK_H_Template   = tpm2.TPMTPublic{
-		Type:    tpm2.TPMAlgECC,
-		NameAlg: tpm2.TPMAlgSHA256,
-		ObjectAttributes: tpm2.TPMAObject{
-			FixedTPM:            true,
-			FixedParent:         true,
-			SensitiveDataOrigin: true,
-			UserWithAuth:        true,
-			NoDA:                true,
-			Restricted:          true,
-			Decrypt:             true,
-		},
-		Parameters: tpm2.NewTPMUPublicParms(
-			tpm2.TPMAlgECC,
-			&tpm2.TPMSECCParms{
-				Symmetric: tpm2.TPMTSymDefObject{
-					Algorithm: tpm2.TPMAlgAES,
-					KeyBits: tpm2.NewTPMUSymKeyBits(
-						tpm2.TPMAlgAES,
-						tpm2.TPMKeyBits(128),
-					),
-					Mode: tpm2.NewTPMUSymMode(
-						tpm2.TPMAlgAES,
-						tpm2.TPMAlgCFB,
-					),
-				},
-				CurveID: tpm2.TPMECCNistP256,
-			},
-		),
-		Unique: tpm2.NewTPMUPublicID(
-			tpm2.TPMAlgECC,
-			&tpm2.TPMSECCPoint{
-				X: tpm2.TPM2BECCParameter{
-					Buffer: make([]byte, 0),
-				},
-				Y: tpm2.TPM2BECCParameter{
-					Buffer: make([]byte, 0),
-				},
-			},
-		),
-	}
+	pcrs                = flag.Uint("pcrs", 23, "PCRs to use")
 )
 
 var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
@@ -105,14 +64,20 @@ func main() {
 
 	// log.Printf("======= oauth2 end using persistent handle ========")
 	//
-	se, err := tpmjwt.NewPasswordSession(rwr, []byte(*keyPass))
+
+	p, err := tpmjwt.NewPCRSession(rwr, []tpm2.TPMSPCRSelection{
+		{
+			Hash:      tpm2.TPMAlgSHA256,
+			PCRSelect: tpm2.PCClientCompatible.PCRs(23),
+		},
+	})
 	if err != nil {
-		log.Fatalf("error executing tpm2.ReadPublic %v", err)
+		log.Fatalf("Error configuring PCR session: %v", err)
 	}
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 		TPMDevice:   rwc,
 		Handle:      tpm2.TPMHandle(*persistentHandle), // persistent handle
-		AuthSession: se,
+		AuthSession: p,
 		Email:       *serviceAccountEmail,
 	})
 	if err != nil {
@@ -141,5 +106,4 @@ func main() {
 		}
 		log.Printf(battrs.Name)
 	}
-
 }

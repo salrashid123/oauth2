@@ -10,17 +10,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tpm        
+    runs-on: ubuntu-latest      
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: 'tpm/go.mod'
+          go-version-file: 'go.mod'
 
       - name: Run tests
         env:

@@ -9,7 +9,6 @@ import (
 	"slices"
 
 	"cloud.google.com/go/storage"
-	// keyfile "github.com/foxboron/go-tpm-keyfiles"
 
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
@@ -27,48 +26,6 @@ var (
 	serviceAccountEmail = flag.String("serviceAccountEmail", "tpm-sa@core-eso.iam.gserviceaccount.com", "Email of the serviceaccount")
 	bucketName          = flag.String("bucketName", "core-eso-bucket", "Bucket name")
 	keyId               = flag.String("keyId", "71b831d149e4667809644840cda2e7e0080035d5", "GCP PRivate key id assigned.")
-
-	ECCSRK_H_Template = tpm2.TPMTPublic{
-		Type:    tpm2.TPMAlgECC,
-		NameAlg: tpm2.TPMAlgSHA256,
-		ObjectAttributes: tpm2.TPMAObject{
-			FixedTPM:            true,
-			FixedParent:         true,
-			SensitiveDataOrigin: true,
-			UserWithAuth:        true,
-			NoDA:                true,
-			Restricted:          true,
-			Decrypt:             true,
-		},
-		Parameters: tpm2.NewTPMUPublicParms(
-			tpm2.TPMAlgECC,
-			&tpm2.TPMSECCParms{
-				Symmetric: tpm2.TPMTSymDefObject{
-					Algorithm: tpm2.TPMAlgAES,
-					KeyBits: tpm2.NewTPMUSymKeyBits(
-						tpm2.TPMAlgAES,
-						tpm2.TPMKeyBits(128),
-					),
-					Mode: tpm2.NewTPMUSymMode(
-						tpm2.TPMAlgAES,
-						tpm2.TPMAlgCFB,
-					),
-				},
-				CurveID: tpm2.TPMECCNistP256,
-			},
-		),
-		Unique: tpm2.NewTPMUPublicID(
-			tpm2.TPMAlgECC,
-			&tpm2.TPMSECCPoint{
-				X: tpm2.TPM2BECCParameter{
-					Buffer: make([]byte, 0),
-				},
-				Y: tpm2.TPM2BECCParameter{
-					Buffer: make([]byte, 0),
-				},
-			},
-		),
-	}
 )
 
 var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
@@ -115,7 +72,7 @@ func main() {
 	// // specify its parent directly
 	// primaryKey, err := tpm2.CreatePrimary{
 	// 	PrimaryHandle: key.Parent,
-	// 	InPublic:      tpm2.New2B(ECCSRK_H_Template),
+	// 	InPublic:      tpm2.New2B(keyfile.ECCSRK_H2_Template),
 	// }.Execute(rwr)
 	// if err != nil {
 	// 	log.Fatalf("can't create primary %q: %v", *tpmPath, err)

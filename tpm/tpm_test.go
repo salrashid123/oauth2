@@ -1,4 +1,4 @@
-package google
+package tpm
 
 import (
 	"crypto/rsa"
