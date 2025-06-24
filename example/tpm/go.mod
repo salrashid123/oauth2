@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	cloud.google.com/go/storage v1.40.0
+	github.com/foxboron/go-tpm-keyfiles v0.0.0-20250323135004-b31fac66206e
 	github.com/google/go-tpm v0.9.3
 	github.com/google/go-tpm-tools v0.4.5
 	github.com/salrashid123/golang-jwt-tpm v1.8.9

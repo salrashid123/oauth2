@@ -1,10 +1,14 @@
 
-# The other Google Cloud Credential TokenSources in golang 
+# TPM and AWS based Google Cloud Credential Access Token 
 
 Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud.  Specifically this repo includes code that allows a developer to acquire and use the following credentials directly and use them with the Google Cloud Client golang library:
 
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
-* **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from AWSCredentials.
+  *  `TPM based key" --> "GCP AccessToken`
+
+* **AWS**:  `access_token` for a Federated identity or GCP service account that is _derived_ from an AWS-SDK `AWSCredentials`.
+  * `AWS SDK Go Credential` --> `GCP AccessToken`. 
+  *  GCP [Workfload Federation](https://cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds) also allows you to exchange AWS for GCP Credentials but this library allows you to specify an arbitrary AWSCredential in code dynamically while workload federation requires a GCP-centric config file and environment variable.
 
 > NOTE: This is NOT supported by Google
 
@@ -30,12 +34,19 @@ Implementations of various [TokenSource](https://godoc.org/golang.org/x/oauth2#T
 ## Usage TpmTokenSource
 
 
-for a simple end-to-end, see [Trusted Platform Module (TPM) based GCP Service Account Key](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
+This library provides the option of returning two different types of access tokens:
+
+*  `JWTAccessToken with scopes` (default)
+or
+* `Oauth2 AccessTokens`
 
 
-The types of tokens this TokenSource fulfills:
+Both will work with GCP apis and its preferable to use the jwt access token since it does not involve a round trip to GCP services.  For more information, see 
 
-- [Self-signed JWT with Scopes](https://google.aip.dev/auth/4111)
+* [AIP 4111: Self-signed JWT](https://google.aip.dev/auth/4111)
+
+
+You can enable the oauth2 flow by setting the `UseOauthToken` config value to true
 
 
 ### Usage
@@ -76,8 +87,6 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 
    The following will load the RSA key and make it persistent at a specific handle 
  
-   Using `go-tpm` is easier and I've setup a small app to import a service account key:
-
     a) Run the following utility function which does the same steps as `tpm2_tools` steps below
    
      - [Importing an external key and load it ot the TPM](https://github.com/salrashid123/tpm2/tree/master/tpm_import_external_rsa)
@@ -87,7 +96,6 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
     Then setup a primary object on the TPM and import `private.pem` we created earlier
 
 ```bash
-
 ## if you want to use a software TPM, 
 # rm -rf /tmp/myvtpm && mkdir /tmp/myvtpm
 # sudo swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
@@ -107,19 +115,14 @@ tpm2_flushcontext -t
 tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 tpm2_flushcontext -t
 
-## optionally export the key to an encrypted keyfile using tpm2tss-genkey 
-# tpm2tss-genkey -u key.pub -r key.prv svc_account_tpm.pem
+## to make persistent
+# tpm2_evictcontrol -C o -c key.ctx 0x81010002
+
+## to create a PEM file
+tpm2_encodeobject -C primary.ctx -u key.pub -r key.prv -o svc_account_tpm.pem
 ```
 
-At this point, the embedded key is a `transient object` reference via file context.  To make it permanent at handle `0x81010002`
-
-```bash
-tpm2_evictcontrol -C o -c key.ctx 0x81010002
-		persistent-handle: 0x81010002
-		action: persisted
-```
-
-or if you choose to use a `keyfile` (which you can enable with some edits in `example/tpm/main.go`).  The TPM enclosed keyfile would be formatted as:
+The encodeobject create a PEM file with the public/private TPM parts encoded into it.  The PEM file looks like this
 
 ```bash
 $ cat svc_account_tpm.pem 
@@ -159,8 +162,9 @@ Once you run `certgen.go` the output should be just `cert.pem` which is infact j
 
 ```bash
  go run certgen.go 
-		2019/11/28 00:49:55 Creating public x509
-		2019/11/28 00:49:55 wrote cert.pem
+
+2019/11/28 00:49:55 Creating public x509
+2019/11/28 00:49:55 wrote cert.pem
 ```
 
 3) Import `x509` cert to GCP for a given service account (note ` YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com` must exist prior to this step)
@@ -175,10 +179,11 @@ Verify...you should see a new certificate.  Note down the `KEY_ID`
 
 ```bash
 $ gcloud iam service-accounts keys list --iam-account=YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com
-		KEY_ID                                    CREATED_AT            EXPIRES_AT
-		a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20:16Z
-		9bd21535c9985ad922c1cf6bb3dbceef0f7375d6  2019-11-28T00:49:55Z  2020-11-27T00:49:55Z <<<<<<< note, this is the pubic cert for the TPM  based key!!
-		7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
+
+KEY_ID                                    CREATED_AT            EXPIRES_AT
+a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20:16Z
+9bd21535c9985ad922c1cf6bb3dbceef0f7375d6  2019-11-28T00:49:55Z  2020-11-27T00:49:55Z <<<<<<< note, this is the pubic cert for the TPM  based key!!
+7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
 ```
 
 Detailed end-to-end steps also detailed [here](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
@@ -195,8 +200,7 @@ for detailed walkthrough of that, see
 
 note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
 
-* for HMAC though you can modify for RSA: [https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate_go](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate_go)
-* duplicate RSA key and prevent reduplication [https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)
+* duplicate RSA key and prevent reduplication [tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)
 
 ---
 
@@ -210,7 +214,8 @@ note, there are also several ways to securely transfer public/private keys betwe
 
 ```bash
 cd example/tpm/
-	 go run no_policy/main.go --projectId=core-eso \
+
+go run no_policy/main.go --projectId=core-eso \
 	   --persistentHandle=0x81010002 \
 	    --serviceAccountEmail="tpm-sa@core-eso.iam.gserviceaccount.com" \
 		--bucketName=core-eso-bucket --keyId=71b831d149e4667809644840cda2e7e0080035d5
@@ -243,7 +248,7 @@ If you want to enable [TPM Session Encryption](https://github.com/salrashid123/t
 
 ---
 
-### Usage AWS
+## Usage AWS
 
 This credential type exchanges an AWS Credential for a GCP credential.  The specific flow implemented here is documented at [Accessing resources from AWS](https://cloud.google.com/iam/docs/access-resources-aws) and utilizes
 [GCP STS Service](https://cloud.google.com/iam/docs/reference/sts/rest).  The STS Service allows exchanges for AWS,Azure and arbitrary OIDC providers but this credential TokenSource focuses specifically on AWS origins.
@@ -251,9 +256,6 @@ This credential type exchanges an AWS Credential for a GCP credential.  The spec
 - For a more detailed walkthrough of this credential type, see [Exchange AWS Credentials for GCP Credentials using GCP STS Service](https://github.com/salrashid123/gcpcompat-aws)
 
 - For GCP->AWS credential exchange, see [AWSCompat](https://github.com/salrashid123/awscompat)
-
-
->> **Note**: this library is an alternative to the recently added [here](https://issuetracker.google.com/issues/238911014#comment33).  For a concerte example in go, see [example](https://gist.github.com/salrashid123/295079ac9a7452e774051b0e1a192b1d)
 
 Sample usage
 
@@ -330,21 +332,6 @@ For an end-to-end demo, see the `examples/aws` folder
 
 ---
 
-
-### Usage DummyTokenSource
-
-To use this tokensource, just specify the list of tokens to return and the interval to rotate/expire the current one.
-
-```golang
-import (
-		testts "github.com/salrashid123/oauth2/dummy"
-)
-
-	myts, err := testts.NewDummyTokenSource(&testts.DummyTokenConfig{
-		TokenValues:             []string{"iamtheeggman", "iamthewalrus"},
-		RotationIntervalSeconds: 10,
-	})
-```
 
 ### Usage YubiKeyTokenSource
 

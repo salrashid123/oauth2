@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"slices"
-	"time"
 
 	"cloud.google.com/go/storage"
 	// keyfile "github.com/foxboron/go-tpm-keyfiles"
@@ -131,31 +130,21 @@ func main() {
 	}
 	log.Printf("Token: %v", tok.AccessToken)
 
-	i := 0
+	ctx := context.Background()
+
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		log.Fatal(err)
+	}
+	sit := storageClient.Buckets(ctx, *projectId)
 	for {
-
-		ctx := context.Background()
-
-		// GCS does not support JWTAccessTokens, the following will only work if UseOauthToken is set to True
-		storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+		battrs, err := sit.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
 			log.Fatal(err)
 		}
-		sit := storageClient.Buckets(ctx, *projectId)
-		for {
-			_, err := sit.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.Fatal(err)
-			}
-			//log.Printf(battrs.Name)
-		}
-		i = i + 1
-		log.Printf("%d\n", i)
-		time.Sleep(60 * time.Second)
-
+		log.Printf(battrs.Name)
 	}
-
 }

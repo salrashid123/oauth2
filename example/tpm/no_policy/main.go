@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"slices"
-	"time"
 
 	"cloud.google.com/go/storage"
 	// keyfile "github.com/foxboron/go-tpm-keyfiles"
@@ -102,6 +101,8 @@ func main() {
 
 	// log.Printf("======= oauth2 using keyfile ========")
 
+	// rwr := transport.FromReadWriteCloser(rwc)
+
 	// c, err := os.ReadFile(*kf)
 	// if err != nil {
 	// 	log.Fatalf("can't load keys %q: %v", *tpmPath, err)
@@ -147,17 +148,12 @@ func main() {
 	// 	}
 	// 	_, _ = flushContextCmd.Execute(rwr)
 	// }()
-	// pub, err := tpm2.ReadPublic{
-	// 	ObjectHandle: tpm2.TPMHandle(rsaKey.ObjectHandle), // keyfile
-	// }.Execute(rwr)
-	// if err != nil {
-	// 	log.Fatalf("error executing tpm2.ReadPublic %v", err)
-	// }
 
 	// ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
-	// 	TPMDevice: rwc,
-	//  Handle: rsaKey.ObjectHandle, // from keyfile
+	// 	TPMDevice:     rwc,
+	// 	Handle:        rsaKey.ObjectHandle, // from keyfile
 	// 	Email:         *serviceAccountEmail,
+	// 	UseOauthToken: false,
 	// })
 
 	log.Printf("======= oauth2 end using persistent handle ========")
@@ -176,30 +172,22 @@ func main() {
 	}
 	log.Printf("Token: %v", tok.AccessToken)
 
-	i := 0
+	ctx := context.Background()
+
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		log.Fatal(err)
+	}
+	sit := storageClient.Buckets(ctx, *projectId)
 	for {
-
-		ctx := context.Background()
-
-		storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+		battrs, err := sit.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
 			log.Fatal(err)
 		}
-		sit := storageClient.Buckets(ctx, *projectId)
-		for {
-			battrs, err := sit.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Printf(battrs.Name)
-		}
-		i = i + 1
-		log.Printf("%d\n", i)
-		time.Sleep(60 * time.Second)
-
+		log.Printf(battrs.Name)
 	}
 
 }

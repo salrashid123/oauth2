@@ -23,14 +23,14 @@ With no  password or policy
 ```bash
 printf '\x00\x00' > unique.dat
 tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
-# tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" 
+
 tpm2_import -C primary.ctx -G rsa2048:rsassa:null -g sha256 -i /tmp/key_rsa.pem -u key.pub -r key.prv
 tpm2_flushcontext -t
 tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 tpm2_flushcontext -t
 tpm2_evictcontrol -C o -c key.ctx 0x81010002
 
-# tpm2tss-genkey -u key.pub -r key.prv svc_account_tpm.pem
+tpm2_encodeobject -C primary.ctx -u key.pub -r key.prv -o svc_account_tpm.pem
 ```
 
 #### Policy Password
@@ -47,7 +47,7 @@ tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 tpm2_flushcontext -t
 tpm2_evictcontrol -C o -c key.ctx 0x81010004
 
-# tpm2tss-genkey -u key.pub -r key.prv svc_account_tpm.pem
+tpm2_encodeobject -C primary.ctx -u key.pub -r key.prv -o svc_account_tpm_password.pem -p
 ```
 
 #### Policy PCR
@@ -68,4 +68,6 @@ tpm2_getcap  handles-transient
 tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
 tpm2_evictcontrol -C o -c key.ctx 0x81010003
 tpm2_flushcontext  -t
+
+tpm2_encodeobject -C primary.ctx -u key.pub -r key.prv -o svc_account_tpm_pcr.pem
 ```
