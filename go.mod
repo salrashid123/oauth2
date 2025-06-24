@@ -1,4 +1,4 @@
-module github.com/salrashid123/oauth2
+module github.com/salrashid123/oauth2/tpm/v3
 
 go 1.24.0
 

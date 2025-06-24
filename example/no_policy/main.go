@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
-	sal "github.com/salrashid123/oauth2/tpm"
+	sal "github.com/salrashid123/oauth2/tpm/v3"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )

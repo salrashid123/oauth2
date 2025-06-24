@@ -7,11 +7,11 @@ require (
 	github.com/google/go-tpm v0.9.5
 	github.com/google/go-tpm-tools v0.4.5
 	github.com/salrashid123/golang-jwt-tpm v1.8.9
-	github.com/salrashid123/oauth2 v0.0.0
+	github.com/salrashid123/oauth2/tpm/v3 v3.0.0
 	google.golang.org/api v0.172.0
 )
 
-replace github.com/salrashid123/oauth2 => ../
+replace github.com/salrashid123/oauth2/tpm/v3 => ../
 
 require (
 	cloud.google.com/go v0.112.1 // indirect
