@@ -233,8 +233,8 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		if err != nil {
 			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to unmarshal response, %v", err)
 		}
-
-		ts.myToken = &oauth2.Token{AccessToken: m.AccessToken, TokenType: "Bearer", Expiry: exp}
+		defaultExp := iat.Add(3600 * time.Second)
+		ts.myToken = &oauth2.Token{AccessToken: m.AccessToken, TokenType: "Bearer", Expiry: defaultExp}
 	}
 
 	return ts.myToken, nil
