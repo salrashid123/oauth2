@@ -1,10 +1,10 @@
 
 # TPM based Google Cloud Credential Access Token 
 
-Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) types for use with Google Cloud where the private key is encoded into a TPM. 
+Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) for use with Google Cloud where the private key is encoded into a TPM. 
 
 * **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
-  *  `TPM based key" --> "GCP AccessToken`
+  *  `TPM based key --> GCP AccessToken`
 
 > NOTE: This is NOT supported by Google
 
@@ -16,9 +16,46 @@ Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSour
 
 
 ```golang
+package main
+
 import (
+	"cloud.google.com/go/storage"
+
+	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/oauth2/v3"
+
 )
+
+var ()
+
+func main() {
+
+	rwc, err := OpenTPM(*tpmPath)
+
+	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMDevice: rwc,
+		Handle:    tpm2.TPMHandle(*persistentHandle), // persistent handle
+		Email:     *serviceAccountEmail,
+	})
+
+	tok, err := ts.Token()
+
+	log.Printf("Token: %v", tok.AccessToken)
+
+	ctx := context.Background()
+
+	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+
+	sit := storageClient.Buckets(ctx, *projectId)
+	for {
+		battrs, err := sit.Next()
+		if err == iterator.Done {
+			break
+		}
+		log.Printf(battrs.Name)
+	}
+}
 ```
 
 ---
@@ -89,15 +126,11 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 
    There are several ways to do this:  either install and use `tpm2_tools` or use `go-tpm`.  
 
-   The following will load the RSA key and make it persistent at a specific handle 
- 
-    a) Run the following utility function which does the same steps as `tpm2_tools` steps below
-   
-     - [Importing an external key and load it ot the TPM](https://github.com/salrashid123/tpm2/tree/master/tpm_import_external_rsa)
+   The following will load the RSA key and make it persistent at a specific handle and create a PEM encoded private key thats only usable by the TPM.
   
-    b) If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
+   If you choose to use `tpm2_tools`,  first [install TPM2-Tools](https://github.com/tpm2-software/tpm2-tools/blob/master/INSTALL.md)
 
-    Then setup a primary object on the TPM and import `private.pem` we created earlier
+   Then setup a primary object on the TPM and import `private.pem` we created earlier
 
 ```bash
 ## if you want to use a software TPM, 
@@ -115,9 +148,7 @@ printf '\x00\x00' > unique.dat
 tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
 # tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" 
 tpm2_import -C primary.ctx -G rsa2048:rsassa:null -g sha256 -i /tmp/key_rsa.pem -u key.pub -r key.prv
-tpm2_flushcontext -t
 tpm2_load -C primary.ctx -u key.pub -r key.prv -c key.ctx
-tpm2_flushcontext -t
 
 ## to make persistent
 # tpm2_evictcontrol -C o -c key.ctx 0x81010002
@@ -139,6 +170,8 @@ ObcXb7YqFF53uD1qgaa0R8/6bROu1qZjuFLFOekOTQ4X/8Rs4ty7w1tsjZbIKZqL
 urvq+J0=
 -----END TSS2 PRIVATE KEY-----
 ```
+
+Also see [Importing an external key and load it ot the TPM](https://github.com/salrashid123/tpm2/tree/master/rsa_import)
 
 ---
 
