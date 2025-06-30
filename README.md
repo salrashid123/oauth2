@@ -3,7 +3,7 @@
 
 Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) for use with Google Cloud where the private key is encoded into a TPM. 
 
-* **TPM**:  `access_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
+* **TPM**:  `access_token` or an `id_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
   *  `TPM based key --> GCP AccessToken`
 
 > NOTE: This is NOT supported by Google
@@ -24,14 +24,11 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	sal "github.com/salrashid123/oauth2/v3"
-
 )
-
-var ()
 
 func main() {
 
-	rwc, err := OpenTPM(*tpmPath)
+	rwc, err := tpmutil.OpenTPM("/dev/tpmrm0")
 
 	ts, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
 		TPMDevice: rwc,
@@ -109,6 +106,7 @@ or
 
 * **C**) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
 
+---
 
 #### A) Import Service Account json to TPM:
 
@@ -182,26 +180,108 @@ Also see [Importing an external key and load it ot the TPM](https://github.com/s
 The following uses `tpm2_tools` but is pretty straightfoward to do the same steps using `go-tpm`
 
 ```bash
-tpm2_createprimary -C o -g sha256 -G rsa -c primary.ctx
+printf '\x00\x00' > unique.dat
+tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+
 tpm2_create -G rsa2048:rsassa:null -g sha256 -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
-tpm2_evictcontrol -C o -c key.ctx 0x81010002
-tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
+# tpm2_evictcontrol -C o -c key.ctx 0x81010002
+# tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
+tpm2_flushcontext -t && tpm2_flushcontext -s && tpm2_flushcontext -l
+
+## you may need to add a -p if your tpm2 tools is not recent (see https://github.com/tpm2-software/tpm2-tools/issues/3458)
+tpm2_encodeobject -C primary.ctx -u key.pub -r key.priv -o svc_account_tpm.pem
 ```
 
 2) use the TPM based private key to create an `x509` certificate
 
-Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM.  We need to use it to sing for an x509 cert.  I've written the following [certgen.go](https://github.com/salrashid123/signer/blob/master/util/certgen/certgen.go) utility to do that.
+Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM so we need to use it to generate a CSR and then have it signed some CA. 
 
-Remember to modify certgen.go and configure/enable the TPM Credential mode (where `persistentHandle in this example is `0x81010002`)
+The following example will use `openssl` and its tpm provider to issue the CSR and an external CA to sign it.  Note that GCP does not even verify the CA of the x509 you use to upload, you can even just self-sign the the x509.    We're using openssl but if you want to use `go-tpm`, you can follow the following reference: [Create CSR and self-signed x509 Certificates using Signer](https://github.com/salrashid123/signer/blob/master/util/README.md)
 
-Once you run `certgen.go` the output should be just `cert.pem` which is infact just the x509 certificate we will use to import
+Anyway, with openssl, you can use a sample external CA in the repo below:
 
 ```bash
- go run certgen.go 
+git clone https://github.com/salrashid123/go_tpm_https_embed.git
+cd go_tpm_https_embed/certs/
 
-2019/11/28 00:49:55 Creating public x509
-2019/11/28 00:49:55 wrote cert.pem
+## make sure openssl provider is installed
+$ openssl list  -provider tpm2  -provider default  --providers
+
+Providers:
+  default
+    name: OpenSSL Default Provider
+    version: 3.5.0
+    status: active
+  tpm2
+    name: TPM 2.0 Provider
+    version: 1.3.0
+    status: active
+
+## check if it can read the private key
+$ openssl rsa -provider tpm2  -provider default -in svc_account_tpm.pem --text
+		Private-Key: (RSA 2048 bit, TPM 2.0)
+		Parent: 0x40000001
+		Modulus:
+			00:cc:71:e6:2e:d5:4d:b1:27:51:07:ca:03:7a:5d:
+			57:e4:0e:38:ee:2c:b9:c0:55:83:1d:98:4d:09:f9:
+			4a:06:59:f9:78:9c:0b:58:8e:93:ce:38:e2:06:5b:
+			22:59:8e:97:7c:83:63:98:0f:83:34:1f:82:d8:2e:
+			42:fc:0f:39:72:3f:52:b0:83:93:25:ad:71:f6:a5:
+			b6:a6:c3:4a:89:37:17:5d:24:32:78:62:3d:f8:28:
+			07:2e:c5:27:d3:81:10:cd:79:33:d1:f7:77:f4:fe:
+			34:35:5f:27:1c:be:44:35:e2:a3:4c:0a:88:9d:d8:
+			05:59:36:25:54:f5:6e:d2:24:51:9b:fc:a0:83:65:
+			3d:bc:eb:a6:18:9e:a3:db:77:df:96:2e:57:72:90:
+			88:46:d4:5a:f1:26:25:95:fc:50:92:d9:4e:45:32:
+			6e:98:74:77:28:9c:40:4b:02:41:cd:cc:17:6b:98:
+			cc:52:94:88:ac:0b:d3:6e:d8:24:22:2d:5b:37:4d:
+			f2:a2:dc:82:4b:47:b4:00:05:a7:4b:24:5e:a3:f0:
+			25:43:68:a3:d0:95:39:1c:4f:7d:7e:e8:1b:0a:81:
+			16:b3:49:c8:b5:f9:24:4d:e3:ab:96:24:de:62:33:
+			f5:94:29:cc:7f:78:78:82:ee:d3:be:c4:cd:04:9c:
+			8d:5f
+		Exponent: 65537 (0x10001)
+		Object Attributes:
+		fixedTPM
+		fixedParent
+		sensitiveDataOrigin
+		userWithAuth
+		sign / encrypt
+		Signature Scheme: PKCS1
+		Hash: SHA256
+		writing RSA key
+		-----BEGIN TSS2 PRIVATE KEY-----
+		MIICFAYGZ4EFCgEDoAMBAQECBEAAAAEEggEaARgAAQALAAQAcgAAABAAFAALCAAA
+		AAAAAQDMceYu1U2xJ1EHygN6XVfkDjjuLLnAVYMdmE0J+UoGWfl4nAtYjpPOOOIG
+		WyJZjpd8g2OYD4M0H4LYLkL8DzlyP1Kwg5MlrXH2pbamw0qJNxddJDJ4Yj34KAcu
+		xSfTgRDNeTPR93f0/jQ1XyccvkQ14qNMCoid2AVZNiVU9W7SJFGb/KCDZT2866YY
+		nqPbd9+WLldykIhG1FrxJiWV/FCS2U5FMm6YdHconEBLAkHNzBdrmMxSlIisC9Nu
+		2CQiLVs3TfKi3IJLR7QABadLJF6j8CVDaKPQlTkcT31+6BsKgRazSci1+SRN46uW
+		JN5iM/WUKcx/eHiC7tO+xM0EnI1fBIHgAN4AIInuE3XFMrF3YKawj8t0UZpeDsnM
+		/VIayjDqPZ0hxBK3ABDMC2N1FMoHOx1JDQSqQrv/TvjSdFOiPb6qmQLlJU5aV7FP
+		sqwipm2XnOnz07jHITtmmS8po9WT/3Fj6lysaVunkZOCI3OpdeNgXpTFDl0CNtig
+		5fEsLuYFxz8GPoiaXccHUrYyN8WmzVb7/GN+/nVWACZY55ElV3mirGnkfRYyuUHY
+		S+Mnu4vFuhuEGR4QBKMImwKOp9E08haNB+U7jJA0TMI5rTZP2nb1nLIeADI6w8qH
+		Qm0keOa7fi4=
+		-----END TSS2 PRIVATE KEY-----
+
+## now use it to generate a csr
+export SAN="DNS:client.domain.com"
+openssl req -new  -provider tpm2  -provider default    -config client.conf \
+  -out client.csr  \
+  -key svc_account_tpm.pem  -reqexts client_reqext   \
+  -subj "/C=US/O=Google/OU=Enterprise/CN=client.domain.com" 
+
+openssl req -in client.csr -noout -text
+
+## then issue the certificate
+openssl ca \
+    -config single-root-ca.conf \
+    -in client.csr \
+    -out cert.pem  \
+    -extensions client_ext
+
 ```
 
 3) Import `x509` cert to GCP for a given service account (note ` YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com` must exist prior to this step)
@@ -223,7 +303,6 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 7077c0c9164252fcfb73d8ccbd68f8c97e0ffee6  2019-11-27T23:15:32Z  2021-12-01T05:43:27Z
 ```
 
-Detailed end-to-end steps also detailed [here](https://gist.github.com/salrashid123/865ea715881cb7c020da987b08c3881a)
 
 #### C)  Remotely transferring an encrypted RSA key into the TPM 
 
@@ -233,11 +312,13 @@ Each VM will then load it into non-volatile area of the TPM and you can use it t
 
 for detailed walkthrough of that, see 
 
-[Importing ServiceAccount Credentials to TPMs](https://gist.github.com/salrashid123/9e4a0328fd8c84374ace78c76a1e34cb)
+* [Importing ServiceAccount Credentials to TPMs](https://gist.github.com/salrashid123/9e4a0328fd8c84374ace78c76a1e34cb)
 
-note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM).  That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
+note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM). 
 
-* duplicate RSA key and prevent reduplication [tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)
+That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
+
+(You can also duplicate a key and prevent reduplication, see [tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate))
 
 ---
 

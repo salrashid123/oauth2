@@ -35,6 +35,8 @@ type TpmTokenConfig struct {
 	KeyId            string             // The service accounts key_id value
 	Scopes           []string           // list of scopes to use
 	UseOauthToken    bool               // enables oauth2 token (default: false)
+	IdentityToken    bool               // get id_token instead of access_token (default false)
+	Audience         string             // audience (required if IdToken is true)
 	EncryptionHandle tpm2.TPMHandle     // (optional) handle to use for transit encryption
 }
 
@@ -49,6 +51,8 @@ type tpmTokenSource struct {
 	scopes           []string
 	useOauthToken    bool
 	myToken          *oauth2.Token
+	identityToken    bool
+	audience         string
 	encryptionHandle tpm2.TPMHandle // (optional) handle to use for transit encryption
 }
 
@@ -71,19 +75,21 @@ type ClaimWithSubject struct {
 // This TpmTokenSource will only work on platforms where the PrivateKey for the Service
 // Account is already loaded on the TPM previously and available via Persistent Handle.
 //
-//	TPMDevice (io.ReadWriteCloser): The device Handle for the TPM managed by the caller Use either TPMDevice or TPMPath
-//	Email (string): The service account to get the token for.
-//	Audience (string): The audience representing the service the token is valid for.
-//	    The audience must match the name of the Service the token is intended for.  See
-//	    documentation links above.
-//	    (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
-//	Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
-//	Handle (*tpm2.Handle): The key handle to use
-//	Session: (go-tpm-jwt.Session): PCR or Password authorized session to use (github.com/salrashid123/golang-jwt-tpm)
-//	KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
-//	    This field is optional but recomended if  UseOauthTOken is false
-//	    Find the keyId associated with the service account by running:
-//	    `gcloud iam service-accounts keys list --iam-account=<email>``
+//		TPMDevice (io.ReadWriteCloser): The device Handle for the TPM managed by the caller Use either TPMDevice or TPMPath
+//		Email (string): The service account to get the token for.
+//		Audience (string): The audience representing the service the token is valid for.
+//		    The audience must match the name of the Service the token is intended for.  See
+//		    documentation links above.
+//		    (eg. https://pubsub.googleapis.com/google.pubsub.v1.Publisher)
+//		Scopes ([]string): The GCP Scopes for the GCP token. (default: cloud-platform)
+//	 IdTOken (bool): get an IdToken instead of an AccessToken
+//	 Audience (string): audience for the id_token
+//		Handle (*tpm2.Handle): The key handle to use
+//		Session: (go-tpm-jwt.Session): PCR or Password authorized session to use (github.com/salrashid123/golang-jwt-tpm)
+//		KeyId (string): (optional) The private KeyID for the service account key saved to the TPM.
+//		    This field is optional but recomended if  UseOauthTOken is false
+//		    Find the keyId associated with the service account by running:
+//		    `gcloud iam service-accounts keys list --iam-account=<email>``
 func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 
 	if &tokenConfig.Handle == nil || tokenConfig.TPMDevice == nil {
@@ -107,6 +113,8 @@ func TpmTokenSource(tokenConfig *TpmTokenConfig) (oauth2.TokenSource, error) {
 		scopes:           tokenConfig.Scopes,
 		handle:           tokenConfig.Handle,
 		useOauthToken:    tokenConfig.UseOauthToken,
+		identityToken:    tokenConfig.IdentityToken,
+		audience:         tokenConfig.Audience,
 		encryptionHandle: tokenConfig.EncryptionHandle,
 	}, nil
 
@@ -129,11 +137,93 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		EncryptionHandle: ts.encryptionHandle,
 	}
 
+	if ts.identityToken {
+		if ts.audience == "" {
+			return ts.myToken, fmt.Errorf(" audience must be set if identityToken is used")
+		}
+		iat := time.Now()
+		exp := iat.Add(time.Second * 10) // we just need a small amount of time to get a token
+
+		type idTokenJWT struct {
+			jwt.RegisteredClaims
+			TargetAudience string `json:"target_audience"`
+		}
+
+		claims := &idTokenJWT{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    ts.email,
+				IssuedAt:  jwt.NewNumericDate(iat),
+				ExpiresAt: jwt.NewNumericDate(exp),
+				Audience:  []string{"https://oauth2.googleapis.com/token"},
+			},
+			TargetAudience: ts.audience,
+		}
+
+		tpmjwt.SigningMethodTPMRS256.Override()
+		jwt.MarshalSingleStringAsArray = false
+		token := jwt.NewWithClaims(tpmjwt.SigningMethodTPMRS256, claims)
+
+		ctx := context.Background()
+		config := &tpmjwt.TPMConfig{
+			TPMDevice:        ts.tpmdevice,
+			Handle:           ts.handle,
+			AuthSession:      ts.authSession,
+			EncryptionHandle: ts.encryptionHandle,
+		}
+		keyctx, err := tpmjwt.NewTPMContext(ctx, config)
+		if err != nil {
+			return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm Unable to initialize tpmJWT: %v", err)
+		}
+
+		tokenString, err := token.SignedString(keyctx)
+		if err != nil {
+			return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm Error signing %v", err)
+		}
+		client := &http.Client{}
+
+		data := url.Values{}
+		data.Add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+		data.Add("assertion", tokenString)
+
+		hreq, err := http.NewRequest(http.MethodPost, "https://oauth2.googleapis.com/token", bytes.NewBufferString(data.Encode()))
+		if err != nil {
+			return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm Error: Unable to generate token Request, %v", err)
+		}
+		hreq.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+		resp, err := client.Do(hreq)
+		if err != nil {
+			return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm  unable to POST token request, %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			f, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm Error Reading response body, %v", err)
+			}
+			return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm Error: Token Request error:, %s", f)
+		}
+		defer resp.Body.Close()
+
+		type idTokenResponse struct {
+			IdToken string `json:"id_token"`
+		}
+
+		var ret idTokenResponse
+		err = json.NewDecoder(resp.Body).Decode(&ret)
+		if err != nil {
+			return ts.myToken, fmt.Errorf("salrashid123/x/oauth2/tpm Error: decoding token:, %s", err)
+		}
+		defaultExp := iat.Add(3600 * time.Second)
+		ts.myToken = &oauth2.Token{AccessToken: ret.IdToken, TokenType: "Bearer", Expiry: defaultExp}
+
+		return ts.myToken, nil
+	}
+
 	if !ts.useOauthToken {
 
 		keyctx, err := tpmjwt.NewTPMContext(ctx, config)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to initialize tpmjwt: %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: Unable to initialize tpmjwt: %v", err)
 		}
 		tpmjwt.SigningMethodTPMRS256.Override()
 		jwt.MarshalSingleStringAsArray = false
@@ -160,7 +250,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 		tokenString, err := token.SignedString(keyctx)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: unable to POST token request, %v", err)
 		}
 		msg = tokenString
 
@@ -189,12 +279,12 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 
 		keyctx, err := tpmjwt.NewTPMContext(ctx, config)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to initialize tpmjwt: %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: Unable to initialize tpmjwt: %v", err)
 		}
 
 		tokenString, err := token.SignedString(keyctx)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpn: unable to POST token request, %v", err)
 		}
 
 		client := &http.Client{}
@@ -211,27 +301,27 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		hreq.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
 		resp, err := client.Do(hreq)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: unable to POST token request, %v", err)
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			f, err := io.ReadAll(resp.Body)
 			defer resp.Body.Close()
 			if err != nil {
-				return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to POST token request %v", err)
+				return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: unable to POST token request %v", err)
 			}
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Token Request error:, %s", string(f))
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: Token Request error:, %s", string(f))
 		}
 
 		f, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: unable to parse tokenresponse, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: unable to parse tokenresponse, %v", err)
 		}
 		resp.Body.Close()
 		var m rtokenJSON
 		err = json.Unmarshal(f, &m)
 		if err != nil {
-			return nil, fmt.Errorf("salrashid123/x/oauth2/google: Unable to unmarshal response, %v", err)
+			return nil, fmt.Errorf("salrashid123/x/oauth2/tpm: Unable to unmarshal response, %v", err)
 		}
 		defaultExp := iat.Add(3600 * time.Second)
 		ts.myToken = &oauth2.Token{AccessToken: m.AccessToken, TokenType: "Bearer", Expiry: defaultExp}

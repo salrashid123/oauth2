@@ -147,4 +147,22 @@ func main() {
 		log.Printf(battrs.Name)
 	}
 
+	// now get an id_token
+
+	its, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMDevice:     rwc,
+		Handle:        tpm2.TPMHandle(*persistentHandle), // persistent handle
+		Email:         *serviceAccountEmail,
+		IdentityToken: true,
+		Audience:      "https://foo.bar",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	itok, err := its.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Identity Token: %v", itok.AccessToken)
+
 }
