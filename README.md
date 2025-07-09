@@ -318,7 +318,7 @@ Each VM will then load it into non-volatile area of the TPM and you can use it t
 
 for detailed walkthrough of that, see 
 
-* [Importing ServiceAccount Credentials to TPMs](https://gist.github.com/salrashid123/9e4a0328fd8c84374ace78c76a1e34cb)
+* [Importing ServiceAccount Credentials to TPMs]([https://gist.github.com/salrashid123/9e4a0328fd8c84374ace78c76a1e34cb](https://github.com/salrashid123/gcp_tpm_sealed_keys))
 
 note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM). 
 
