@@ -96,19 +96,19 @@ You can enable the oauth2 flow by setting the `UseOauthToken` config value to tr
 
 From there you have several options on how to associate a key on a TPM with a service account.  You can either do
 
-* **A)** download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
+* **[A]** download a Google ServiceAccount's `json` file  and embed the private part to the TPM 
 
 or
 
-* **B)** Generate a Key _ON THE TPM_ and then import the public part to GCP.
+* **[B]** Generate a Key _ON THE TPM_ and then import the public part to GCP.
 
 or
 
-* **C**) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
+* **[C]**) remote seal the service accounts RSA Private key remotely, encrypt it with the remote TPM's Endorsement Key and load it
 
 ---
 
-#### A) Import Service Account json to TPM:
+#### [A] Import Service Account json to TPM:
 
 1) Download Service account json file
 
@@ -173,7 +173,7 @@ Also see [Importing an external key and load it ot the TPM](https://github.com/s
 
 ---
 
-#### B) Generate key on TPM and export public X509 certificate to GCP
+#### [B] Generate key on TPM and export public X509 certificate to GCP
 
 1) Generate Key on TPM and make it persistent
 
@@ -186,7 +186,7 @@ tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedpare
 tpm2_create -G rsa2048:rsassa:null -g sha256 -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
 # tpm2_evictcontrol -C o -c key.ctx 0x81010002
-# tpm2_readpublic -c 0x81010002 -f PEM -o key.pem
+tpm2_readpublic -c key.ctx -f PEM -o svc_account_tpm_pub.pem
 tpm2_flushcontext -t && tpm2_flushcontext -s && tpm2_flushcontext -l
 
 ## you may need to add a -p if your tpm2 tools is not recent (see https://github.com/tpm2-software/tpm2-tools/issues/3458)
@@ -195,11 +195,65 @@ tpm2_encodeobject -C primary.ctx -u key.pub -r key.priv -o svc_account_tpm.pem
 
 2) use the TPM based private key to create an `x509` certificate
 
-Google Cloud uses the `x509` format of a key to import.  So far all we've created ins a private RSA key on the TPM so we need to use it to generate a CSR and then have it signed some CA. 
+Google Cloud uses the `x509` format of a key to import.    Note that GCP does not even verify the CA of the x509 you use to upload, you can even just self-sign the the x509.
 
-The following example will use `openssl` and its tpm provider to issue the CSR and an external CA to sign it.  Note that GCP does not even verify the CA of the x509 you use to upload, you can even just self-sign the the x509.    We're using openssl but if you want to use `go-tpm`, you can follow the following reference: [Create CSR and self-signed x509 Certificates using Signer](https://github.com/salrashid123/signer/blob/master/util/README.md)
+So far all we've created ins a private RSA key on the TPM so we need to use it to generate a CSR and then have it signed some CA. 
 
-Anyway, with openssl, you can use a sample external CA in the repo below:
+For this step, you can either use
+
+1. `tpm2_tools` to generate a TPM Key and Openssl to "force" a public key with an x509 (bypassing CSR)
+2. `tpm2_tools` to generate a TPM Key and `go-tpm` to issue the CSR. From there any CA can sign for it.  see [example](https://github.com/salrashid123/signer/blob/master/util/README.md)
+3. `go-tpm` to create a TPM key and then issue a CSR.  From there any CA can sign for it
+
+You can also use openssl to generate a key on the TPM and sign it externally.  The following will generate a TPM based key, then create a CSR and finally sign it with CA:
+
+* [TPM based private key](https://github.com/salrashid123/ca_scratchpad?tab=readme-ov-file#tpm-based-private-key)
+
+The sample below will 'force' a public key into an x509 certificate:
+
+```bash
+### get a sample CA
+git clone https://github.com/salrashid123/ca_scratchpad.git
+cd ca_scratchpad
+
+### initialize it
+mkdir -p ca/root-ca/private ca/root-ca/db crl certs
+chmod 700 ca/root-ca/private
+cp /dev/null ca/root-ca/db/root-ca.db
+cp /dev/null ca/root-ca/db/root-ca.db.attr
+
+echo 01 > ca/root-ca/db/root-ca.crt.srl
+echo 01 > ca/root-ca/db/root-ca.crl.srl
+
+export SAN=single-root-ca
+openssl genpkey -algorithm rsa -pkeyopt rsa_keygen_bits:2048 \
+      -pkeyopt rsa_keygen_pubexp:65537 -out ca/root-ca/private/root-ca.key
+
+openssl req -new  -config single-root-ca.conf  -key ca/root-ca/private/root-ca.key \
+   -out ca/root-ca.csr  
+
+openssl ca -selfsign     -config single-root-ca.conf  \
+   -in ca/root-ca.csr     -out ca/root-ca.crt  \
+   -extensions root_ca_ext
+
+cat > key.conf << EOF
+[ kem_ext ]
+keyUsage                = critical,keyEncipherment
+basicConstraints        = CA:false
+subjectKeyIdentifier    = hash
+authorityKeyIdentifier  = keyid:always
+subjectAltName          = DNS:key1.domain.com
+EOF
+
+openssl x509 -new -CAkey ca/root-ca/private/root-ca.key \
+   -CA ca/root-ca.crt -force_pubkey svc_account_tpm_pub.pem \
+   -subj "/CN=my svc account Certificate" -out svc_account_tpm.crt -extfile key.conf -extensions kem_ext
+
+### you should see the same public key
+openssl x509 -in svc_account_tpm.crt -pubkey -noout
+```
+
+Alternatively, the following example will use `openssl` and its tpm provider to issue the CSR and an external CA to sign it. 
 
 ```bash
 git clone https://github.com/salrashid123/go_tpm_https_embed.git
@@ -217,54 +271,6 @@ Providers:
     name: TPM 2.0 Provider
     version: 1.3.0
     status: active
-
-## check if it can read the private key
-$ openssl rsa -provider tpm2  -provider default -in svc_account_tpm.pem --text
-		Private-Key: (RSA 2048 bit, TPM 2.0)
-		Parent: 0x40000001
-		Modulus:
-			00:cc:71:e6:2e:d5:4d:b1:27:51:07:ca:03:7a:5d:
-			57:e4:0e:38:ee:2c:b9:c0:55:83:1d:98:4d:09:f9:
-			4a:06:59:f9:78:9c:0b:58:8e:93:ce:38:e2:06:5b:
-			22:59:8e:97:7c:83:63:98:0f:83:34:1f:82:d8:2e:
-			42:fc:0f:39:72:3f:52:b0:83:93:25:ad:71:f6:a5:
-			b6:a6:c3:4a:89:37:17:5d:24:32:78:62:3d:f8:28:
-			07:2e:c5:27:d3:81:10:cd:79:33:d1:f7:77:f4:fe:
-			34:35:5f:27:1c:be:44:35:e2:a3:4c:0a:88:9d:d8:
-			05:59:36:25:54:f5:6e:d2:24:51:9b:fc:a0:83:65:
-			3d:bc:eb:a6:18:9e:a3:db:77:df:96:2e:57:72:90:
-			88:46:d4:5a:f1:26:25:95:fc:50:92:d9:4e:45:32:
-			6e:98:74:77:28:9c:40:4b:02:41:cd:cc:17:6b:98:
-			cc:52:94:88:ac:0b:d3:6e:d8:24:22:2d:5b:37:4d:
-			f2:a2:dc:82:4b:47:b4:00:05:a7:4b:24:5e:a3:f0:
-			25:43:68:a3:d0:95:39:1c:4f:7d:7e:e8:1b:0a:81:
-			16:b3:49:c8:b5:f9:24:4d:e3:ab:96:24:de:62:33:
-			f5:94:29:cc:7f:78:78:82:ee:d3:be:c4:cd:04:9c:
-			8d:5f
-		Exponent: 65537 (0x10001)
-		Object Attributes:
-		fixedTPM
-		fixedParent
-		sensitiveDataOrigin
-		userWithAuth
-		sign / encrypt
-		Signature Scheme: PKCS1
-		Hash: SHA256
-		writing RSA key
-		-----BEGIN TSS2 PRIVATE KEY-----
-		MIICFAYGZ4EFCgEDoAMBAQECBEAAAAEEggEaARgAAQALAAQAcgAAABAAFAALCAAA
-		AAAAAQDMceYu1U2xJ1EHygN6XVfkDjjuLLnAVYMdmE0J+UoGWfl4nAtYjpPOOOIG
-		WyJZjpd8g2OYD4M0H4LYLkL8DzlyP1Kwg5MlrXH2pbamw0qJNxddJDJ4Yj34KAcu
-		xSfTgRDNeTPR93f0/jQ1XyccvkQ14qNMCoid2AVZNiVU9W7SJFGb/KCDZT2866YY
-		nqPbd9+WLldykIhG1FrxJiWV/FCS2U5FMm6YdHconEBLAkHNzBdrmMxSlIisC9Nu
-		2CQiLVs3TfKi3IJLR7QABadLJF6j8CVDaKPQlTkcT31+6BsKgRazSci1+SRN46uW
-		JN5iM/WUKcx/eHiC7tO+xM0EnI1fBIHgAN4AIInuE3XFMrF3YKawj8t0UZpeDsnM
-		/VIayjDqPZ0hxBK3ABDMC2N1FMoHOx1JDQSqQrv/TvjSdFOiPb6qmQLlJU5aV7FP
-		sqwipm2XnOnz07jHITtmmS8po9WT/3Fj6lysaVunkZOCI3OpdeNgXpTFDl0CNtig
-		5fEsLuYFxz8GPoiaXccHUrYyN8WmzVb7/GN+/nVWACZY55ElV3mirGnkfRYyuUHY
-		S+Mnu4vFuhuEGR4QBKMImwKOp9E08haNB+U7jJA0TMI5rTZP2nb1nLIeADI6w8qH
-		Qm0keOa7fi4=
-		-----END TSS2 PRIVATE KEY-----
 
 ## now use it to generate a csr
 export SAN="DNS:client.domain.com"
@@ -304,9 +310,9 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 ```
 
 
-#### C)  Remotely transferring an encrypted RSA key into the TPM 
+#### [C]  Remotely transferring an encrypted RSA key into the TPM 
 
-If you already have a list of EKCerts you know for sure trust and want to distribute keys to, then its pretty easy:  just use `client.ImportSigningKey()` api from `go-tpm-tools` to seal data to an EK, then transmit the encrypted key to each VM.
+If you already have a list of `EKCerts` you know for sure trust and want to distribute keys to, then its pretty easy:  just use `client.ImportSigningKey()` api from `go-tpm-tools` to seal data to an EK, then transmit the encrypted key to each VM.
 
 Each VM will then load it into non-volatile area of the TPM and you can use it to sign as much as you want.
 
@@ -322,7 +328,7 @@ That procedure is demonstrated here: [Duplicating Objects](https://github.com/tp
 
 ---
 
-#### Post Step A) B) or C)
+#### Post Step [A] [B] or [C]
 
 4. Use `TpmTokenSource`
 

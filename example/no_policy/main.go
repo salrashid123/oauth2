@@ -9,7 +9,6 @@ import (
 	"slices"
 
 	"cloud.google.com/go/storage"
-
 	"github.com/google/go-tpm-tools/simulator"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -112,6 +111,23 @@ func main() {
 	// 	Email:         *serviceAccountEmail,
 	// 	UseOauthToken: false,
 	// })
+
+	// ctx := context.Background()
+	// storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// sit := storageClient.Buckets(ctx, *projectId)
+	// for {
+	// 	battrs, err := sit.Next()
+	// 	if err == iterator.Done {
+	// 		break
+	// 	}
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	log.Printf(battrs.Name)
+	// }
 
 	log.Printf("======= oauth2 end using persistent handle ========")
 
