@@ -322,7 +322,7 @@ for detailed walkthrough of that, see
 
 note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM). 
 
-That procedure is demonstrated here: [Duplicating Objects](https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects)
+That procedure is demonstrated here: [Duplicating Objects]([https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_duplicate.1.md#examples))
 
 (You can also duplicate a key and prevent reduplication, see [tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate))
 
