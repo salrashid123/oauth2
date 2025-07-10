@@ -312,7 +312,7 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 
 #### [C]  Remotely transferring an encrypted RSA key into the TPM 
 
-If you already have a list of `EKCerts` you know for sure trust and want to distribute keys to, then its pretty easy:  just use `[tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)) with either `tpm2_tools` or `go-tpm`
+If you already have a list of `EKCerts` you know for sure trust and want to distribute keys to, then its pretty easy:  just use [tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)) with either `tpm2_tools` or `go-tpm`
 
 for detailed walkthrough of that, see 
 
@@ -320,8 +320,7 @@ for detailed walkthrough of that, see
 
 * [https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_duplicate.1.md#examples)
 
-* [tpm2 Duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)
-  
+
 ---
 
 #### Post Step [A] [B] or [C]
