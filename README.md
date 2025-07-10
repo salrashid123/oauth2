@@ -312,20 +312,16 @@ a03f0c4c61864b7fe20db909a3174c6b844f8909  2019-11-27T23:20:16Z  2020-12-31T23:20
 
 #### [C]  Remotely transferring an encrypted RSA key into the TPM 
 
-If you already have a list of `EKCerts` you know for sure trust and want to distribute keys to, then its pretty easy:  just use `client.ImportSigningKey()` api from `go-tpm-tools` to seal data to an EK, then transmit the encrypted key to each VM.
-
-Each VM will then load it into non-volatile area of the TPM and you can use it to sign as much as you want.
+If you already have a list of `EKCerts` you know for sure trust and want to distribute keys to, then its pretty easy:  just use `[tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)) with either `tpm2_tools` or `go-tpm`
 
 for detailed walkthrough of that, see 
 
 * [Importing ServiceAccount Credentials to TPMs](https://github.com/salrashid123/gcp_tpm_sealed_keys)
 
-note, there are also several ways to securely transfer public/private keys between TPM-enabled systems (eg, your laptop where you downloaded the key and a Shielded VM). 
+* [https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_duplicate.1.md#examples)
 
-That procedure is demonstrated here: [https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_duplicate.1.md#examples)
-
-(You can also duplicate a key and prevent reduplication, see [tpm2_duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate))
-
+* [tpm2 Duplicate](https://github.com/salrashid123/tpm2/tree/master/tpm2_duplicate)
+  
 ---
 
 #### Post Step [A] [B] or [C]
