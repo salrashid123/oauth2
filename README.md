@@ -316,7 +316,7 @@ If you already have a list of `EKCerts` you know for sure trust and want to dist
 
 for detailed walkthrough of that, see 
 
-* [Importing ServiceAccount Credentials to TPMs](https://github.com/salrashid123/gcp_tpm_sealed_keys)
+* [tpmcopy: Transfer RSA|ECC|AES|HMAC key to a remote Trusted Platform Module (TPM)](https://github.com/salrashid123/tpmcopy)
 
 * [https://github.com/tpm2-software/tpm2-tools/wiki/Duplicating-Objects](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_duplicate.1.md#examples)
 
