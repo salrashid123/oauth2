@@ -180,17 +180,37 @@ Also see [Importing an external key and load it ot the TPM](https://github.com/s
 The following uses `tpm2_tools` but is pretty straightfoward to do the same steps using `go-tpm`
 
 ```bash
+## create an H2 primary
 printf '\x00\x00' > unique.dat
-tpm2_createprimary -C o -G ecc  -g sha256  -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
+tpm2_createprimary -C o -G ecc  -g sha256 \
+   -c primary.ctx -a "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt" -u unique.dat
 
+## create an rsa key, then load and evit it
 tpm2_create -G rsa2048:rsassa:null -g sha256 -u key.pub -r key.priv -C primary.ctx
 tpm2_load -C primary.ctx -u key.pub -r key.priv -c key.ctx
 # tpm2_evictcontrol -C o -c key.ctx 0x81010002
+
+### extract the publicKey PEM
 tpm2_readpublic -c key.ctx -f PEM -o svc_account_tpm_pub.pem
 tpm2_flushcontext -t && tpm2_flushcontext -s && tpm2_flushcontext -l
 
+## convert the entire TPM public/private key to PEM
 ## you may need to add a -p if your tpm2 tools is not recent (see https://github.com/tpm2-software/tpm2-tools/issues/3458)
 tpm2_encodeobject -C primary.ctx -u key.pub -r key.priv -o svc_account_tpm.pem
+```
+
+if you want to use `openssl` to issue a key:
+
+```bash
+## make sure openssl provider is installed
+openssl list  -provider tpm2  -provider default  --providers
+
+## generate an RSA key
+openssl genpkey -provider tpm2 -algorithm RSA -pkeyopt rsa_keygen_bits:2048  \
+       -pkeyopt rsa_keygen_pubexp:65537 -out svc_account_tpm.pem
+
+## extract the public key
+openssl rsa -provider tpm2  -provider default  -in svc_account_tpm.pem -pubout > svc_account_tpm_pem.pub
 ```
 
 2) use the TPM based private key to create an `x509` certificate
@@ -199,96 +219,21 @@ Google Cloud uses the `x509` format of a key to import.    Note that GCP does no
 
 So far all we've created ins a private RSA key on the TPM so we need to use it to generate a CSR and then have it signed some CA. 
 
-For this step, you can either use
+For this step, you can either
 
-1. `tpm2_tools` to generate a TPM Key and Openssl to "force" a public key with an x509 (bypassing CSR)
-2. `tpm2_tools` to generate a TPM Key and `go-tpm` to issue the CSR. From there any CA can sign for it.  see [example](https://github.com/salrashid123/signer/blob/master/util/README.md)
-3. `go-tpm` to create a TPM key and then issue a CSR.  From there any CA can sign for it
-
-You can also use openssl to generate a key on the TPM and sign it externally.  The following will generate a TPM based key, then create a CSR and finally sign it with CA:
-
-* [TPM based private key](https://github.com/salrashid123/ca_scratchpad?tab=readme-ov-file#tpm-based-private-key)
-
-The sample below will 'force' a public key into an x509 certificate:
+-  Isseue `CSR` which any CA can sign
 
 ```bash
-### get a sample CA
-git clone https://github.com/salrashid123/ca_scratchpad.git
-cd ca_scratchpad
-
-### initialize it
-mkdir -p ca/root-ca/private ca/root-ca/db crl certs
-chmod 700 ca/root-ca/private
-cp /dev/null ca/root-ca/db/root-ca.db
-cp /dev/null ca/root-ca/db/root-ca.db.attr
-
-echo 01 > ca/root-ca/db/root-ca.crt.srl
-echo 01 > ca/root-ca/db/root-ca.crl.srl
-
-export SAN=single-root-ca
-openssl genpkey -algorithm rsa -pkeyopt rsa_keygen_bits:2048 \
-      -pkeyopt rsa_keygen_pubexp:65537 -out ca/root-ca/private/root-ca.key
-
-openssl req -new  -config single-root-ca.conf  -key ca/root-ca/private/root-ca.key \
-   -out ca/root-ca.csr  
-
-openssl ca -selfsign     -config single-root-ca.conf  \
-   -in ca/root-ca.csr     -out ca/root-ca.crt  \
-   -extensions root_ca_ext
-
-cat > key.conf << EOF
-[ kem_ext ]
-keyUsage                = critical,keyEncipherment
-basicConstraints        = CA:false
-subjectKeyIdentifier    = hash
-authorityKeyIdentifier  = keyid:always
-subjectAltName          = DNS:key1.domain.com
-EOF
-
-openssl x509 -new -CAkey ca/root-ca/private/root-ca.key \
-   -CA ca/root-ca.crt -force_pubkey svc_account_tpm_pub.pem \
-   -subj "/CN=my svc account Certificate" -out svc_account_tpm.crt -extfile key.conf -extensions kem_ext
-
-### you should see the same public key
-openssl x509 -in svc_account_tpm.crt -pubkey -noout
+openssl req  -provider tpm2  -provider default  -new -key svc_account_tpm.pem -out svc_account_tpm.csr
 ```
 
-Alternatively, the following example will use `openssl` and its tpm provider to issue the CSR and an external CA to sign it. 
+- Issue Self-Signed certificate
 
 ```bash
-git clone https://github.com/salrashid123/go_tpm_https_embed.git
-cd go_tpm_https_embed/certs/
-
-## make sure openssl provider is installed
-$ openssl list  -provider tpm2  -provider default  --providers
-
-Providers:
-  default
-    name: OpenSSL Default Provider
-    version: 3.5.0
-    status: active
-  tpm2
-    name: TPM 2.0 Provider
-    version: 1.3.0
-    status: active
-
-## now use it to generate a csr
-export SAN="DNS:client.domain.com"
-openssl req -new  -provider tpm2  -provider default    -config client.conf \
-  -out client.csr  \
-  -key svc_account_tpm.pem  -reqexts client_reqext   \
-  -subj "/C=US/O=Google/OU=Enterprise/CN=client.domain.com" 
-
-openssl req -in client.csr -noout -text
-
-## then issue the certificate
-openssl ca \
-    -config single-root-ca.conf \
-    -in client.csr \
-    -out cert.pem  \
-    -extensions client_ext
-
+openssl req  -provider tpm2  -provider default   -new -x509 -key svc_account_tpm.pem -out ssvc_account_tpm.crt -days 365
 ```
+
+>> note you can do all these step using go-tpm
 
 3) Import `x509` cert to GCP for a given service account (note ` YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com` must exist prior to this step)
 
