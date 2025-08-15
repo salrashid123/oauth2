@@ -11,7 +11,7 @@ openssl rsa -in /tmp/key_rsa.pem -outform PEM -pubout -out public.pem
 If using `swtpm`
 
 ```bash
-# sudo swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
+# swtpm socket --tpmstate dir=/tmp/myvtpm --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear
 ## then specify "127.0.0.1:2321"  as the TPM device path in the examples, export the following var
 # export TPM2TOOLS_TCTI="swtpm:port=2321"
 ```
@@ -48,6 +48,11 @@ tpm2_flushcontext -t
 tpm2_evictcontrol -C o -c key.ctx 0x81010004
 
 tpm2_encodeobject -C primary.ctx -u key.pub -r key.prv -o svc_account_tpm_password.pem -p
+
+
+ go run password_policy/main.go \
+    --keyPass=testpwd -keyfile /tmp/svc_account_tpm_password.pem \
+     -serviceAccountEmail=tpm-sa@core-eso.iam.gserviceaccount.com --tpm-path=$TPMB
 ```
 
 #### Policy PCR
@@ -70,6 +75,11 @@ tpm2_evictcontrol -C o -c key.ctx 0x81010003
 tpm2_flushcontext  -t
 
 tpm2_encodeobject -C primary.ctx -u key.pub -r key.prv -o svc_account_tpm_pcr.pem
+
+
+ go run password_policy/main.go \
+    --pcrs=23 -keyfile /tmp/svc_account_tpm_pcr.pem \
+     -serviceAccountEmail=tpm-sa@core-eso.iam.gserviceaccount.com --tpm-path=$TPMB
 ```
 
 

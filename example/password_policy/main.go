@@ -62,9 +62,24 @@ func main() {
 
 	rwr := transport.FromReadWriter(rwc)
 
+	encPrimary, err := tpm2.CreatePrimary{
+		PrimaryHandle: tpm2.TPMRHOwner,
+		InPublic:      tpm2.New2B(tpm2.RSASRKTemplate),
+	}.Execute(rwr)
+	if err != nil {
+		log.Fatalf("can't create pimaryEK: %v", err)
+	}
+
+	defer func() {
+		flushContextCmd := tpm2.FlushContext{
+			FlushHandle: encPrimary.ObjectHandle,
+		}
+		_, _ = flushContextCmd.Execute(rwr)
+	}()
+
 	// log.Printf("======= oauth2 end using persistent handle ========")
 	//
-	se, err := tpmjwt.NewPasswordSession(rwr, []byte(*keyPass))
+	se, err := tpmjwt.NewPasswordSession(rwr, []byte(*keyPass), encPrimary.ObjectHandle)
 	if err != nil {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
 	}
