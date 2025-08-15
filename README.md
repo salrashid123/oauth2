@@ -9,6 +9,8 @@ Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSour
 > NOTE: This is NOT supported by Google
 
 
+*BREAKING CHANGE*
+
 * removed AWS oauth provider (nobody's using it AFAIK)
 * refactor it to top-level package `github.com/salrashid123/oauth2/v3` for simplicity
 

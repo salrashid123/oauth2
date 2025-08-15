@@ -65,27 +65,12 @@ func main() {
 	// log.Printf("======= oauth2 end using persistent handle ========")
 	//
 
-	encPrimary, err := tpm2.CreatePrimary{
-		PrimaryHandle: tpm2.TPMRHOwner,
-		InPublic:      tpm2.New2B(tpm2.RSASRKTemplate),
-	}.Execute(rwr)
-	if err != nil {
-		log.Fatalf("can't create pimaryEK: %v", err)
-	}
-
-	defer func() {
-		flushContextCmd := tpm2.FlushContext{
-			FlushHandle: encPrimary.ObjectHandle,
-		}
-		_, _ = flushContextCmd.Execute(rwr)
-	}()
-
 	p, err := tpmjwt.NewPCRSession(rwr, []tpm2.TPMSPCRSelection{
 		{
 			Hash:      tpm2.TPMAlgSHA256,
-			PCRSelect: tpm2.PCClientCompatible.PCRs(*pcrs),
+			PCRSelect: tpm2.PCClientCompatible.PCRs(23),
 		},
-	}, tpm2.TPM2BDigest{Buffer: nil}, encPrimary.ObjectHandle)
+	})
 	if err != nil {
 		log.Fatalf("Error configuring PCR session: %v", err)
 	}

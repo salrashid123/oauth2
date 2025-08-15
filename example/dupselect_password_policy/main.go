@@ -102,7 +102,7 @@ func run() {
 		log.Fatalf("can't create policysecret: %v", err)
 	}
 
-	se, err := tpmjwt.NewPolicyAuthValueAndDuplicateSelectSession(rwr, []byte(*keyPass), primaryKey.Name, primaryKey.ObjectHandle)
+	se, err := tpmjwt.NewPolicyAuthValueAndDuplicateSelectSession(rwr, []byte(*keyPass), primaryKey.Name)
 	if err != nil {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
 	}
