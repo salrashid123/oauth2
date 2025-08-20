@@ -64,7 +64,7 @@ func main() {
 
 	// log.Printf("======= oauth2 end using persistent handle ========")
 	//
-	se, err := tpmjwt.NewPasswordSession(rwr, []byte(*keyPass))
+	se, err := tpmjwt.NewPasswordAuthSession(rwr, []byte(*keyPass), 0)
 	if err != nil {
 		log.Fatalf("error executing tpm2.ReadPublic %v", err)
 	}
