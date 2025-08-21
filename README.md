@@ -233,6 +233,16 @@ openssl req  -provider tpm2  -provider default  -new -key svc_account_tpm.pem -o
 openssl req  -provider tpm2  -provider default   -new -x509 -key svc_account_tpm.pem -out ssvc_account_tpm.crt -days 365
 ```
 
+- `force` the public key 
+
+Its extremely rare to do this but if you have a CA and the public key for the TPM based service account, you can issue an x509 without a CSR by using [-force_pubkey](https://docs.openssl.org/3.2/man1/openssl-x509/#certificate-output-options)
+
+```bash
+openssl x509 -new -CAkey root-ca.key  -CA root-ca.crt \
+  -force_pubkey svc_account_tpm_pub.pem \
+    -subj "/CN=my svc account Certificate" -out svc_account_tpm.crt
+```
+
 >> note you can do all these step using go-tpm
 
 3) Import `x509` cert to GCP for a given service account (note ` YOUR_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com` must exist prior to this step)
