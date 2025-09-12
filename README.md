@@ -4,16 +4,12 @@
 Implementations of [TokenSource](https://godoc.org/golang.org/x/oauth2#TokenSource) for use with Google Cloud where the private key is encoded into a TPM. 
 
 * **TPM**:  `access_token` or an `id_token` for a serviceAccount where the private key is saved inside a Trusted Platform Module (TPM)
-  *  `TPM based key --> GCP AccessToken`
+
+  *  `TPM based key --> GCP AccessToken | GCP id_token`
 
 > NOTE: This is NOT supported by Google
 
-
-*BREAKING CHANGE*
-
-* removed AWS oauth provider (nobody's using it AFAIK)
-* refactor it to top-level package `github.com/salrashid123/oauth2/v3` for simplicity
-
+basic usage:
 
 ```golang
 package main
@@ -72,20 +68,37 @@ func main() {
 ## Usage TpmTokenSource
 
 
-This library provides the option of returning two different types of access tokens:
+This library provides the option of returning three different types of tokens:
 
 *  `JWTAccessToken with scopes` (default)
 or
 * `Oauth2 AccessTokens`
+or
+* `OIDC Tokens (id_tokens)`
 
 
-Both will work with GCP apis and its preferable to use the jwt access token since it does not involve a round trip to GCP services.  For more information, see 
+Both JWT and Oauth2 tokens will work with GCP apis and its preferable to use the jwt access token since it does not involve a round trip to GCP services.  For more information, see 
 
 * [AIP 4111: Self-signed JWT](https://google.aip.dev/auth/4111)
 
 
 You can enable the oauth2 flow by setting the `UseOauthToken` config value to true
 
+
+## `Base Options`
+
+```golang
+	TPMDevice        io.ReadWriteCloser // ReadCloser to the TPM
+	Email            string             // ServiceAccount Email
+	Handle           tpm2.TPMHandle     // TPM ObjectHandle
+	AuthSession      tpmjwt.Session     // TPM Session handle for Password or PCR auth
+	KeyId            string             // The service accounts key_id value
+	Scopes           []string           // list of scopes to use
+	UseOauthToken    bool               // enables oauth2 token (default: false)
+	IdentityToken    bool               // get id_token instead of access_token (default false)
+	Audience         string             // audience (required if IdToken is true)
+	EncryptionHandle tpm2.TPMHandle     // (optional) handle to use for transit encryption
+```
 
 ### Usage
 
@@ -280,6 +293,8 @@ for detailed walkthrough of that, see
 
 #### Post Step [A] [B] or [C]
 
+##### `access_token`
+
 4. Use `TpmTokenSource`
 
 	After the key is embedded, you can *DELETE* any reference to `private.pem` (the now exists protected by the TPM and any access policy you may want to setup).
@@ -312,6 +327,33 @@ eg
 	// use it with a gcp api client
 	storageClient, err := storage.NewClient(ctx, option.WithTokenSource(ts))
 ```
+
+
+##### `id_token`
+
+If you wanted an `id_token`:
+
+```golang
+
+	// open the tpm
+	rwc, err := OpenTPM(*tpmPath)
+
+	its, err := sal.TpmTokenSource(&sal.TpmTokenConfig{
+		TPMDevice:     rwc,
+		Handle:        tpm2.TPMHandle(*persistentHandle), // persistent handle
+		Email:         *serviceAccountEmail,
+		IdentityToken: true,
+		Audience:      "https://foo.bar",
+	})
+
+	itok, err := its.Token()
+
+	log.Printf("Identity Token: %v", itok.AccessToken)
+
+```
+
+
+#### Session Encryption
 
 If you want to enable [TPM Session Encryption](https://github.com/salrashid123/tpm2/tree/master/tpm_encrypted_session), see [here](https://github.com/salrashid123/gcp-adc-tpm/tree/main?tab=readme-ov-file#encrypted-tpm-sessions).  You will need to modify `example/tpm/main.go` to acquire the Endorsement keys and the supply them after validation as following parameters to `TpmTokenConfig`
 
