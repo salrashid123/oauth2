@@ -4,13 +4,18 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"os"
 	"testing"
 
 	keyfile "github.com/foxboron/go-tpm-keyfiles"
-	"github.com/google/go-tpm-tools/simulator"
+
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
+)
+
+const (
+	swTPMPathB = "127.0.0.1:2321"
 )
 
 func TestTPMJWTAccessTokenHandle(t *testing.T) {
@@ -18,9 +23,10 @@ func TestTPMJWTAccessTokenHandle(t *testing.T) {
 	saEmail := os.Getenv("CICD_SA_EMAIL")
 	saPEM := os.Getenv("CICD_SA_PEM")
 
-	tpmDevice, err := simulator.Get()
+	//tpmDevice, err := simulator.Get()
+	tpmDevice, err := net.Dial("tcp", swTPMPathB)
 	if err != nil {
-		t.Errorf("error getting simulator %v", err)
+		t.Errorf("error getting swtpm %v", err)
 	}
 	defer tpmDevice.Close()
 
@@ -151,9 +157,10 @@ func TestTPMOauthTokenHandle(t *testing.T) {
 	saEmail := os.Getenv("CICD_SA_EMAIL")
 	saPEM := os.Getenv("CICD_SA_PEM")
 
-	tpmDevice, err := simulator.Get()
+	//tpmDevice, err := simulator.Get()
+	tpmDevice, err := net.Dial("tcp", swTPMPathB)
 	if err != nil {
-		t.Errorf("error getting simulator %v", err)
+		t.Errorf("error getting swtpm %v", err)
 	}
 	defer tpmDevice.Close()
 
@@ -284,9 +291,10 @@ func TestTPMIdTokenHandle(t *testing.T) {
 	saEmail := os.Getenv("CICD_SA_EMAIL")
 	saPEM := os.Getenv("CICD_SA_PEM")
 
-	tpmDevice, err := simulator.Get()
+	//tpmDevice, err := simulator.Get()
+	tpmDevice, err := net.Dial("tcp", swTPMPathB)
 	if err != nil {
-		t.Errorf("error getting simulator %v", err)
+		t.Errorf("error getting swtpm %v", err)
 	}
 	defer tpmDevice.Close()
 
