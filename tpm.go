@@ -200,7 +200,7 @@ func (ts *tpmTokenSource) Token() (*oauth2.Token, error) {
 		defaultExp := iat.Add(3600 * time.Second)
 		ts.myToken = &oauth2.Token{AccessToken: ret.IdToken, TokenType: "Bearer", Expiry: defaultExp}
 
-		return nil, nil
+		return ts.myToken, nil
 	}
 
 	if !ts.useOauthToken {
